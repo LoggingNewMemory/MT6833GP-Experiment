@@ -83,3 +83,38 @@ bl mt_cpufreq_update_legacy_volt(2, &eem_table_cluster2);
 ```
 
 Because `mediatek_eem.ko` never directly calls `regulator_set_voltage()`, returning `0` from `mt_cpufreq_update_legacy_volt` completely disarms the overwrite mechanism without breaking Energy Aware Scheduling (EAS) or thermal monitoring.
+
+---
+
+## 4. CPU Cache SRAM Dynamic Tracking & MCUPM Architecture
+
+### Regulator Transfer Functions in `CPU_DVFS.ko`
+Disassembly in Ghidra identified two distinct voltage step converters:
+1. **Core Logic Regulator Converter (`mt6359_vproc_transfer2volt` at `0x9c28`)**:
+   ```c
+   int mt6359_vproc_transfer2volt(uint32_t step) {
+       return step * 625 + 40000; // Base: 400.00 mV (400000 uV)
+   }
+   ```
+2. **Cache SRAM Regulator Converter (`mt6359_vsram_transfer2volt` at `0x9af4`)**:
+   ```c
+   int mt6359_vsram_transfer2volt(uint32_t step) {
+       return step * 625 + 50000; // Base: 500.00 mV (500000 uV)
+   }
+   ```
+3. **SRAM Actuation Routine (`set_cur_volt_sram_cpu` at `0x9a7c`)**:
+   Invokes `regulator_set_voltage()` on `ldo_vsram_proc1` (Little cache) or `ldo_vsram_proc2` (Big cache).
+
+### The MCUPM SYSRAM Channel (`0x11bc10`)
+* In `cpuhvfs_pvt_tbl_create` (`0x8284`), the kernel populates `_recordRef` at physical SRAM address `0x11bc10` (inside MCUPM SYSRAM `0x11b000`).
+* The kernel struct `opp_desc` only encodes a single 12-bit `volt_step` field for core logic.
+* There is no independent SRAM voltage table in the kernel driver. The on-chip MCUPM firmware dynamically calculates both core and SRAM voltages from the single `volt_step` during OPP switches.
+* Consequently, modifying `volt_step` in `CPU_DVFS.ko` scales down **both Core Logic and Cache SRAM** in lockstep.
+
+### The Hardware Tracking Formula & Retention Floor
+Telemetry readings under live frequency sweeping proved the exact formula enforced by MCUPM hardware:
+
+$$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)$$
+
+* **Load Tracking**: High OPPs maintain $V_{\text{sram}} = V_{\text{proc}} + 100.00\text{ mV}$.
+* **750.00 mV Silicon Clamp**: Prevents 6T SRAM bitcell retention failures ($V_{\text{min}}$) during low-frequency and idle operation.

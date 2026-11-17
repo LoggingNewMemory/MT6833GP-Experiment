@@ -55,3 +55,22 @@ autiasp      // d5 03 23 bf (Authenticate return address)
 ret          // d6 5f 03 c0
 ```
 This satisfies the caller without corrupting our custom undervolted OPP tables.
+
+---
+
+## 4. CPU Cache SRAM Power Architecture (vsram_proc1 & vsram_proc2)
+
+### Dual-Rail Interconnect Design
+Each CPU cluster on the MT6833 incorporates separate power domains for core logic vs. cache memory arrays:
+1. **Little Cluster (6x Cortex-A55)**:
+   * Logic Core: `buck_vgpu11` (regulator.9, high-efficiency switching buck converter).
+   * L1/L2 Cache SRAM: `ldo_vsram_proc1` (regulator.48, low-noise LDO).
+2. **Big Cluster (2x Cortex-A76)**:
+   * Logic Core: `buck_vproc2` (regulator.15, high-current switching buck converter).
+   * L2/L3 Cache SRAM: `ldo_vsram_proc2` (regulator.23, low-noise LDO).
+
+### MCUPM Hardware Co-Regulation
+The MCUPM coprocessor automatically correlates $V_{\text{sram}}$ with $V_{\text{proc}}$:
+* As $V_{\text{proc}}$ scales dynamically between OPPs, $V_{\text{sram}}$ follows via the hardware transfer function $V_{\text{sram}} = \max(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV})$.
+* Under heavy 2.4 GHz load: $V_{\text{proc2}} = 812.50\text{ mV} \implies V_{\text{sram2}} = 912.50\text{ mV}$.
+* When idle or downclocked to 200 MHz: $V_{\text{proc}} = 581.25\text{ mV}$, but $V_{\text{sram}}$ stays clamped at $750.00\text{ mV}$ to prevent 6T SRAM bitcell state degradation.

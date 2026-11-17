@@ -25,7 +25,7 @@ fi
 
 mkdir -p "${OUT_DIR}"
 
-echo "[*] Step 1: Patching CPU_DVFS.ko (200MHz underclock + -43.75mV + EEM bypass)..."
+echo "[*] Step 1: Patching CPU_DVFS.ko (200MHz underclock + -50.00mV + EEM bypass)..."
 python3 "${SCRIPT_DIR}/scripts/patch_dvfs.py" \
     -i "${STOCK_DIR}/CPU_DVFS.ko" \
     -o "${OUT_DIR}/CPU_DVFS.ko"
