@@ -56,6 +56,24 @@ if [ -f "${STOCK_DIR}/Upower.ko" ]; then
         -o "${OUT_DIR}/Upower.ko"
 fi
 
+# Step 2.8: Dynamic PowerHAL patcher tool compilation
+if [ -f "${SCRIPT_DIR}/tools/patch_powerhint/patch_powerhint.c" ]; then
+    echo "[*] Step 2.8: Compiling patch_powerhint (AArch64 static tool)..."
+    NDK_CLANG="/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android30-clang"
+    NDK_STRIP="/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+    if [ -x "$NDK_CLANG" ]; then
+        "$NDK_CLANG" -Oz -static -ffunction-sections -fdata-sections -Wl,--gc-sections \
+            "${SCRIPT_DIR}/tools/patch_powerhint/patch_powerhint.c" \
+            "${SCRIPT_DIR}/tools/patch_powerhint/cJSON.c" \
+            -o "${OUT_DIR}/patch_powerhint"
+        "$NDK_STRIP" -s "${OUT_DIR}/patch_powerhint"
+        cp "${OUT_DIR}/patch_powerhint" "${MODULE_SRC}/tools/patch_powerhint"
+        chmod 755 "${MODULE_SRC}/tools/patch_powerhint"
+    else
+        echo "[-] Notice: NDK clang not found; reusing prebuilt patch_powerhint"
+    fi
+fi
+
 echo "[*] Step 3: Preparing module payload..."
 TEMP_MODULE="$(mktemp -d)"
 cp -r "${MODULE_SRC}/." "${TEMP_MODULE}/"

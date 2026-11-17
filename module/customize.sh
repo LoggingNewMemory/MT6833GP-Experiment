@@ -168,7 +168,36 @@ set_perm "$MODPATH/service.sh" 0 0 0755
 set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
 set_perm "$MODPATH/uninstall.sh" 0 0 0755
 set_perm "$MODPATH/tools/magiskboot" 0 0 0755
+set_perm "$MODPATH/tools/patch_powerhint" 0 0 0755
 set_perm "$MODPATH/preinit/bin/mount_dvfs" 0 0 0755
+
+# ==============================================================================
+# Step 4: Generate dynamic PowerHAL powerhint patch from installed ROM
+# ==============================================================================
+ui_print "- Inspecting ROM PowerHAL configuration..."
+PATCHER="$MODPATH/tools/patch_powerhint"
+SRC_JSON="/vendor/etc/powerhint.json"
+TARGET_DIR="$MODPATH/system/vendor/etc"
+TARGET_JSON="$TARGET_DIR/powerhint.json"
+VENDOR_DIR="$MODPATH/vendor/etc"
+VENDOR_JSON="$VENDOR_DIR/powerhint.json"
+MD5_FILE="$MODPATH/.powerhint_src_md5"
+
+chmod 755 "$PATCHER" 2>/dev/null
+
+if [ -f "$SRC_JSON" ] && [ -x "$PATCHER" ]; then
+    mkdir -p "$TARGET_DIR" "$VENDOR_DIR"
+    if "$PATCHER" "$SRC_JSON" "$TARGET_JSON"; then
+        cp "$TARGET_JSON" "$VENDOR_JSON"
+        chmod 644 "$TARGET_JSON" "$VENDOR_JSON"
+        md5sum "$SRC_JSON" 2>/dev/null | awk '{print $1}' > "$MD5_FILE"
+        ui_print "- Dynamic powerhint.json successfully generated from ROM!"
+    else
+        ui_print "! Warning: Failed to patch /vendor/etc/powerhint.json; skipping overlay."
+    fi
+else
+    ui_print "- No /vendor/etc/powerhint.json found or patcher missing; skipping overlay."
+fi
 
 ui_print "- All components installed successfully!"
 ui_print "- Reboot to apply CPU (-50mV), GPU (-50mV), and Vcore (-75mV)."

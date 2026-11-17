@@ -54,3 +54,28 @@ chmod 755 /metadata/vold/ksu/preinit/lh8n_undervolt
 chmod 755 /metadata/vold/ksu/preinit/lh8n_undervolt/bin
 chmod 755 /metadata/vold/ksu/preinit/lh8n_undervolt/kmod
 
+# Dynamic PowerHAL powerhint.json Patcher
+# Automatically adapts to whatever powerhint.json the installed ROM provides
+PATCHER="$MODDIR/tools/patch_powerhint"
+SRC_JSON="/vendor/etc/powerhint.json"
+TARGET_DIR="$MODDIR/system/vendor/etc"
+TARGET_JSON="$TARGET_DIR/powerhint.json"
+VENDOR_DIR="$MODDIR/vendor/etc"
+VENDOR_JSON="$VENDOR_DIR/powerhint.json"
+MD5_FILE="$MODDIR/.powerhint_src_md5"
+
+if [ -f "$SRC_JSON" ] && [ -x "$PATCHER" ]; then
+    CUR_MD5=$(md5sum "$SRC_JSON" 2>/dev/null | awk '{print $1}')
+    OLD_MD5=$(cat "$MD5_FILE" 2>/dev/null || echo "")
+
+    if [ "$CUR_MD5" != "$OLD_MD5" ] || [ ! -f "$TARGET_JSON" ]; then
+        mkdir -p "$TARGET_DIR" "$VENDOR_DIR"
+        if "$PATCHER" "$SRC_JSON" "$TARGET_JSON" >/dev/null 2>&1; then
+            cp "$TARGET_JSON" "$VENDOR_JSON"
+            chmod 644 "$TARGET_JSON" "$VENDOR_JSON"
+            echo "$CUR_MD5" > "$MD5_FILE"
+        fi
+    fi
+fi
+
+

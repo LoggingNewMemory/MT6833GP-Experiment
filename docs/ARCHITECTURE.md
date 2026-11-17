@@ -295,11 +295,21 @@ Because a typical user taps or scrolls every 1 to 2 seconds while reading, chatt
 #### Calibrated EAS-Aligned Interaction Tuning
 With EAS energy models and scheduler migration calibrated (`turn_point = 2` / 500 MHz), EAS schedutil responds within 2-4 ms to genuine thread runqueue demand. Heavy artificial boost durations are unnecessary.
 
-The module replaces `/vendor/etc/powerhint.json` with an optimized configuration:
+The module eliminates touch-boost battery drain through specific targets:
 1. **Eliminate Big Core Minimum Clamp**: `CPUSuperClusterMinFreq` boost is removed. UI rendering threads remain on energy-efficient Little cores. When heavy operations occur (e.g. app cold start), EAS autonomously migrates threads to Big cores when utilization crosses the 500 MHz threshold.
 2. **Eliminate GPU Boost on 2D Touch**: `GpuPwrLevel` is removed from `INTERACTION`. The Mali-G57 GPU stays at its 390 MHz idle floor and scales dynamically via GED only when SurfaceFlinger / HWUI frame composition deadlines require it.
 3. **Gentle, Short Little Cluster Bump**: `CPUEfficiencyClusterMinFreq` is tuned to `703000` (703 MHz, OPP 13) for only **100 ms**. At 703 MHz (-50 mV @ 637.50 mV), dynamic power is only $24.8\text{ mW}$ per core, eliminating frame drop latency during the initial touch event while consuming a fraction of the energy.
 4. **uclamp Duration Reduction**: `TAUclampMin` and `FGUclampMin` durations are reduced from 5000 ms and 3000 ms down to **150 ms**.
+
+#### Autonomous Dynamic On-Boot Patcher (`tools/patch_powerhint`)
+Shipping static `powerhint.json` files in Magisk/KernelSU modules breaks compatibility when ROM maintainers update the file (e.g. tuning camera, VR, game modes, thermal profiles, or refresh rate policies). Overwriting the entire file clobbers upstream improvements.
+
+To ensure universal ROM compatibility without manual maintenance, the module implements an autonomous native AArch64 JSON patcher ([tools/patch_powerhint](file:///home/yamada/CODE/MT6833GP-Experiment/tools/patch_powerhint/patch_powerhint.c)) built with static `cJSON`:
+1. **Zero Static Overlays**: The module zip contains no pre-baked `powerhint.json`.
+2. **Execution Timing**: Executes in [post-fs-data.sh](file:///home/yamada/CODE/MT6833GP-Experiment/module/post-fs-data.sh) before KernelSU/Magisk attaches OverlayFS / magic mounts.
+3. **Pristine ROM Ingestion**: Reads the ROM's live, unmounted `/vendor/etc/powerhint.json` directly from the ROM filesystem.
+4. **Surgical AST Modification**: Parses the true JSON AST, preserving 100% of the ROM maintainer's custom hints, camera profiles, and thermal configurations. It modifies exclusively the `INTERACTION` actions and appends `"200000"` to CPU frequency nodes, respecting both ascending and descending frequency table conventions.
+5. **Caching & Zero-Overhead**: Computes the MD5 checksum of `/vendor/etc/powerhint.json`. On standard boots, the MD5 check matches and skips execution in 1 ms. When the ROM is updated via OTA or dirty flash, the MD5 difference automatically triggers re-patching against the new ROM file.
 
 ### 7.4 Screen-Off Standby Floor (`PPM_POLICY_LCM_OFF`)
 In stock firmware, `PPM_POLICY_LCM_OFF` (PPM Policy Index 8) is disabled by default (`is_enabled = 0`). The module activates this policy in [service.sh](file:///home/yamada/CODE/MT6833GP-Experiment/module/service.sh):
