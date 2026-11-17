@@ -189,7 +189,7 @@ We patch `Upower.ko` across four key dimensions:
 Inside `Upower.ko`, `get_L_pwr_efficiency()`, `get_LL_pwr_efficiency()`, and `upower_cal_turn_point()` compute task migration thresholds:
 $$\text{Efficiency} = \frac{P_{\text{total}}}{\text{Capacity}} = \frac{P_{\text{dyn}} + P_{\text{lkg}}}{\text{Capacity}}$$
 
-In `upower_cal_turn_point()`, the kernel compares Little cluster efficiency against the Big cluster's minimum efficiency point ($\text{min\_eff}_{\text{Big}}$), scanning Little OPPs from index 15 down to 0:
+In `upower_cal_turn_point()`, the kernel compares Little cluster efficiency against the Big cluster's minimum efficiency point ($\text{eff}_{\text{Big, min}}$), scanning Little OPPs from index 15 down to 0:
 ```c
 min_eff = get_L_min_efficiency(); // Minimum efficiency across Big cluster OPPs
 for (i = 15; i >= 0; i--) {
@@ -201,21 +201,21 @@ for (i = 15; i >= 0; i--) {
 ```
 
 * **Stock Turn Point Evaluation**:
-  - Stock lowest Big OPP was 500 MHz ($P_{\text{dyn}} = 88,853\ \mu\text{W}$, $P_{\text{lkg0}} = 103,988\ \mu\text{W}$, $\text{cap} = 611$): $\text{min\_eff} = \frac{88853 + 103988}{611} = 315$.
+  - Stock lowest Big OPP was 500 MHz ($P_{\text{dyn}} = 88,853\ \mu\text{W}$, $P_{\text{lkg0}} = 103,988\ \mu\text{W}$, $\text{cap} = 611$): $\text{eff}_{\min} = \frac{88853 + 103988}{611} = 315$.
   - Little OPP 6 ($1048\text{ MHz}$): $\text{eff} = 311 \le 315$.
   - Little OPP 7 ($1128\text{ MHz}$): $\text{eff} = 321 > 315$.
-  - Result: $\text{turn\_point} = 6 + 1 = 7$ ($1048\text{ MHz}$).
+  - Result: `turn_point` $= 6 + 1 = 7$ ($1048\text{ MHz}$).
 
 * **Calibrated Undervolt & 200 MHz Underclock Floor Evaluation**:
   - Unlocking the 200 MHz underclock floor on Big cores reduces Big OPP 0 dynamic power by **-62.9%** (down to $32,928\ \mu\text{W}$ @ 581.25 mV).
   - Under live operating conditions with thermal leakage scaling (Leakage Index 4 in `/proc/upower/upower_debug`):
     - Big OPP 0 ($200\text{ MHz}$): $P_{\text{dyn}} = 32,928\ \mu\text{W}$, $P_{\text{lkg}} = 175,000\ \mu\text{W}$, $\text{cap} = 611 \implies \text{eff} = \frac{32928 + 175000}{611} = 340$.
     - Big OPP 1 ($500\text{ MHz}$): $P_{\text{dyn}} = 85,900\ \mu\text{W}$, $P_{\text{lkg}} = 175,000\ \mu\text{W}$, $\text{cap} = 667 \implies \text{eff} = \frac{85900 + 175000}{667} = 391$.
-    - Big cluster minimum efficiency shifts to $\text{min\_eff} = 340$ at the 200 MHz floor *(or $\text{min\_eff} = 224$ in static tables without runtime thermal leakage updates)*.
+    - Big cluster minimum efficiency shifts to $\text{eff}_{\min} = 340$ at the 200 MHz floor *(or $\text{eff}_{\min} = 224$ in static tables without runtime thermal leakage updates)*.
   - Evaluating Little cluster OPPs top-down ($15 \to 0$):
     - Little OPP 2 ($703\text{ MHz}$): $P_{\text{dyn}} = 22,145\ \mu\text{W}$, $P_{\text{lkg}} = 46,000\ \mu\text{W}$, $\text{cap} = 193 \implies \text{eff} = 353 > 340$.
     - Little OPP 1 ($500\text{ MHz}$): $P_{\text{dyn}} = 18,479\ \mu\text{W}$, $P_{\text{lkg}} = 43,000\ \mu\text{W}$, $\text{cap} = 181 \implies \text{eff} = 339 \le 340$ (Match).
-    - Result: $\text{turn\_point} = 1 + 1 = 2$ ($500\text{ MHz}$).
+    - Result: `turn_point` $= 1 + 1 = 2$ ($500\text{ MHz}$).
 
 * **Verified Hardware Confirmation**:
   Live hardware reading via `/proc/upower/upower_debug`:
@@ -253,9 +253,9 @@ PPM maintains an internal priority hierarchy exposed through `/proc/ppm/dump_pol
 Every cycle or policy update, `mt_ppm_main()` evaluates all active and enabled policies:
 1. **OPP Index Bounds**: For each cluster, policies submit `(min_freq_idx, max_freq_idx, min_core_num, max_core_num)`. Note that in MediaTek convention, OPP index `0` represents the maximum frequency (highest clock speed) while index `15` represents the floor (200 MHz).
 2. **Aggregated Final Limit**: PPM takes the union of constraints:
-   $$\text{Final } \text{min\_idx} = \min(\text{policy}_k \text{ min\_idx})$$
-   $$\text{Final } \text{max\_idx} = \max(\text{policy}_k \text{ max\_idx})$$
-   Taking the minimum index for `min_idx` enforces the highest lower-bound clock, while taking the maximum index for `max_idx` enforces the lowest upper-bound ceiling.
+   $$\text{Final}_{\min} = \min_{k}(\text{policy}_{k,\min})$$
+   $$\text{Final}_{\max} = \max_{k}(\text{policy}_{k,\max})$$
+   Taking the minimum index for $\text{Final}_{\min}$ (`min_freq_idx`) enforces the highest lower-bound clock, while taking the maximum index for $\text{Final}_{\max}$ (`max_freq_idx`) enforces the lowest upper-bound ceiling.
 3. **Cpufreq QoS Synchronization**: PPM looks up the frequency corresponding to `Final max_idx` and `Final min_idx` in the cluster DVFS tables via `ppm_main_freq_to_idx()` and calls:
    - `freq_qos_update_request(&cluster->qos_min, min_freq_khz)`
    - `freq_qos_update_request(&cluster->qos_max, max_freq_khz)`

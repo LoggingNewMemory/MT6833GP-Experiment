@@ -295,7 +295,7 @@ The module contains static definitions for 3 hardware CPU bin revisions (`FY`, `
 0x270: str  w13, [x12, #0xc]      // Store updated dyn_power
 ```
 This confirms physical dynamic power scaling:
-$$P_{\text{dyn}} = P_{\text{dyn\_ref}} \times \frac{V_{\text{curr}}^2}{V_{\text{ref}}^2}$$
+$$P_{\text{dyn}} = P_{\text{dyn, ref}} \times \frac{V_{\text{curr}}^2}{V_{\text{ref}}^2}$$
 
 #### 2. Efficiency Calculation & Turn Point (`upower_update_tables_by_eem` at `.text + 0x0d14`, File Offset: `0x1d14`)
 ```aarch64
@@ -331,7 +331,7 @@ $$P_{\text{dyn}} = P_{\text{dyn\_ref}} \times \frac{V_{\text{curr}}^2}{V_{\text{
 0x95c: autiasp
 0x960: ret
 ```
-The routine scans Little cluster OPPs top-down ($15 \to 0$), selecting the first OPP whose efficiency satisfies $\text{eff}_{\text{Little}} \le \text{min\_eff}_{\text{Big}}$.
+The routine scans Little cluster OPPs top-down ($15 \to 0$), selecting the first OPP whose efficiency satisfies $\text{eff}_{\text{Little}} \le \text{eff}_{\text{Big, min}}$.
 
 #### 4. EEM Overwrite Disarm & The ELF Relocation Collision Hazard
 

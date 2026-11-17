@@ -223,7 +223,7 @@ The driver transparently accepts 725,000 uV requests without error while clampin
 
 #### The Calibration Solution
 * **Static Tables Calibrated**: Scaled nominal voltages to match the -50.00 mV undervolt and 200 MHz underclock across Little, Big, CCI, and cluster tables.
-* **Physical Power Scaling**: Recalculated dynamic power entries via $P_{\text{dyn\_new}} = P_{\text{dyn\_stock}} \times (V_{\text{patched}} / V_{\text{stock}})^2$.
+* **Physical Power Scaling**: Recalculated dynamic power entries via $P_{\text{dyn, new}} = P_{\text{dyn, stock}} \times (V_{\text{patched}} / V_{\text{stock}})^2$.
 * **200 MHz Floor Scaled**: Scaled 200 MHz OPP 0 dynamic power down to 7,083 uW (~60% lower idle power).
 * **Migration Turn Point Calibrated**: Aligned `turn_point` with the 200 MHz Big core floor (`turn_point = 2` / 500 MHz on live hardware in `/proc/upower/upower_debug`), accurately modeling the ~63% dynamic power reduction of Cortex-A76 at 200 MHz (32.9 mW vs 88.9 mW stock) for optimal EAS energy arbitration.
 * **EEM Overwrite Disarmed & Relocations Neutralized**: Stubbed `upower_update_volt_by_eem` (`0x1b1c`) and `upower_update_tables_by_eem` (`0x1d14`) with a compact 12-byte PAC/BTI return stub (`3f 23 03 d5 bf 23 03 d5 c0 03 5f d6`), terminating prior to the `0x0b28` relocation boundary. Simultaneously neutralized all 35 internal ELF relocations to `R_AARCH64_NONE` to eliminate module loader relocation overwrites and guarantee 100% boot stability.
