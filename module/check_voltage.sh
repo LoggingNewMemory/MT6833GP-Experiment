@@ -211,4 +211,21 @@ else
     echo "  Upower Procfs    : Not active or Upower not loaded"
 fi
 
+# --- 8. MediaTek PPM & Cobra Policy Arbitration ---
+echo ""
+echo "[ MediaTek PPM & Cobra Policy Arbitration ]"
+echo "-----------------------------------------------------------------"
+if [ -f /proc/ppm/policy_status ]; then
+    lcm_stat=$(grep "PPM_POLICY_LCM_OFF" /proc/ppm/policy_status 2>/dev/null | awk '{print $NF}')
+    echo "  LCM_OFF Policy   : ${lcm_stat:-disabled} (Screen-off floor)"
+fi
+if [ -f /proc/ppm/policy/lcmoff_min_freq ]; then
+    echo "  LCM_OFF Min Freq : $(cat /proc/ppm/policy/lcmoff_min_freq 2>/dev/null)"
+fi
+if [ -f /proc/ppm/policy/thermal_cur_power ]; then
+    pwr_min=$(grep "min power" /proc/ppm/policy/thermal_cur_power 2>/dev/null | awk '{print $NF}')
+    pwr_max=$(grep "max power" /proc/ppm/policy/thermal_cur_power 2>/dev/null | awk '{print $NF}')
+    echo "  Cobra Power Range: ${pwr_min:-N/A} mW .. ${pwr_max:-N/A} mW"
+fi
+
 echo "================================================================="

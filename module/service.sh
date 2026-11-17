@@ -23,6 +23,15 @@ for round in 1 2 3 4 5; do
     sleep 3
 done
 
+# Configure MediaTek PPM Policy Arbitration
+# Enable PPM_POLICY_LCM_OFF (idx 8) to lock CPU to 200 MHz idle floor during screen-off sleep
+if [ -f /proc/ppm/policy_status ]; then
+    echo "8 1" > /proc/ppm/policy_status 2>/dev/null
+fi
+if [ -f /proc/ppm/policy/lcmoff_min_freq ]; then
+    echo 200000 > /proc/ppm/policy/lcmoff_min_freq 2>/dev/null
+fi
+
 # Log status
 {
     echo "=== Triple Undervolt Module Status ==="
@@ -51,7 +60,11 @@ done
     echo "--- Preinit Kernel Log ---"
     dmesg 2>/dev/null | grep -E 'lh8n_undervolt|CPU_DVFS|mtk_gpufreq|Upower' | tail -n 25
     echo "--- Upower EAS & PPM Energy Model ---"
-    cat /proc/upower/upower_debug 2>/dev/null
+    if [ -f /proc/upower/upower_debug ]; then
+        cat /proc/upower/upower_debug 2>/dev/null | head -n 40
+    else
+        echo "Upower debug interface not present"
+    fi
     echo "--- CPU Frequencies ---"
     echo "CPU0 available freqs:"
     cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies 2>/dev/null
@@ -86,10 +99,12 @@ done
     cat /sys/class/regulator/regulator.3/microvolts 2>/dev/null
     echo "PMIC buck_vcore (regulator.12):"
     cat /sys/class/regulator/regulator.12/microvolts 2>/dev/null
-    echo "--- Upower EAS & PPM Energy Model ---"
-    if [ -f /proc/upower/upower_debug ]; then
-        cat /proc/upower/upower_debug 2>/dev/null | head -n 40
-    else
-        echo "Upower debug interface not present"
-    fi
+    echo "--- MediaTek PPM Policy Status & Arbitration ---"
+    cat /proc/ppm/policy_status 2>/dev/null
+    echo "PPM dump_policy_list:"
+    cat /proc/ppm/dump_policy_list 2>/dev/null | head -n 15
+    echo "PPM thermal power budget:"
+    cat /proc/ppm/policy/thermal_cur_power 2>/dev/null
+    echo "PPM lcmoff_min_freq:"
+    cat /proc/ppm/policy/lcmoff_min_freq 2>/dev/null
 } > /data/local/tmp/undervolt.log 2>&1

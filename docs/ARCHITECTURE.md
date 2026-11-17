@@ -224,3 +224,87 @@ for (i = 15; i >= 0; i--) {
   ```
 
 Because Cortex-A76 Big cores can now operate stably at an ultra-low-power 200 MHz floor consuming only 32.9 mW dynamic power, waking a Big core for lightweight background work incurs virtually no power penalty. EAS scheduler energy calculations correctly reflect this reality, optimizing asymmetric task arbitration between Cortex-A55 and Cortex-A76 cores.
+
+---
+
+## 7. MediaTek Power Policy Manager (PPM) & PowerHAL Arbitration Architecture
+
+### 7.1 Policy Hierarchy & Procfs Arbitration Architecture (`/proc/ppm/`)
+The MediaTek Power Policy Manager (`mtk_ppm_v3.ko`) coordinates cluster frequency limits, core counts, and thermal/power envelopes across CPU clusters. It arbitrates multiple competing system policies and feeds the resultant constraints directly into the Linux kernel `cpufreq` framework using `freq_qos_update_request()`.
+
+PPM maintains an internal priority hierarchy exposed through `/proc/ppm/dump_policy_list`:
+
+```
++------------------------------------------------------------------------------------+
+| Priority 128: PPM_POLICY_SYS_BOOST      (System boost: UT, WIFI, PERFSERV, USB)   |
+| Priority  64: PPM_POLICY_LCM_OFF        (Display blank / standby sleep policy)    |
+| Priority  64: PPM_POLICY_USER_LIMIT     (Userspace frequency and core constraints)|
+| Priority  64: PPM_POLICY_HARD_USER_LIMIT(Hard userspace frequency clamps)         |
+| Priority   1: PPM_POLICY_DLPT           (Dynamic Loading Power Throttling)        |
+| Priority   1: PPM_POLICY_THERMAL        (Thermal budget throttling engine)        |
+| Priority   1: PPM_POLICY_PWR_THRO       (Power budget throttling engine)          |
+| Priority   0: PPM_POLICY_FORCE_LIMIT    (Forced core/frequency limits)            |
+| Priority   0: PPM_POLICY_UT             (Unit test / debug overrides)             |
+| Priority   0: PPM_POLICY_PTPOD          (PTPOD power tracking)                    |
++------------------------------------------------------------------------------------+
+```
+
+#### Arbitration Engine (`mt_ppm_main`)
+Every cycle or policy update, `mt_ppm_main()` evaluates all active and enabled policies:
+1. **OPP Index Bounds**: For each cluster, policies submit `(min_freq_idx, max_freq_idx, min_core_num, max_core_num)`. Note that in MediaTek convention, OPP index `0` represents the maximum frequency (highest clock speed) while index `15` represents the floor (200 MHz).
+2. **Aggregated Final Limit**: PPM takes the union of constraints:
+   $$\text{Final } \text{min\_idx} = \min(\text{policy}_k \text{ min\_idx})$$
+   $$\text{Final } \text{max\_idx} = \max(\text{policy}_k \text{ max\_idx})$$
+   Taking the minimum index for `min_idx` enforces the highest lower-bound clock, while taking the maximum index for `max_idx` enforces the lowest upper-bound ceiling.
+3. **Cpufreq QoS Synchronization**: PPM looks up the frequency corresponding to `Final max_idx` and `Final min_idx` in the cluster DVFS tables via `ppm_main_freq_to_idx()` and calls:
+   - `freq_qos_update_request(&cluster->qos_min, min_freq_khz)`
+   - `freq_qos_update_request(&cluster->qos_max, max_freq_khz)`
+4. **Sysfs Node Interface**: The nodes `/proc/ppm/policy/hard_userlimit_cpu_freq`, `userlimit_cpu_freq`, `hard_userlimit_max_cpu_freq`, and `hard_userlimit_min_cpu_freq` accept frequency values in **kHz** (e.g. `200000 2000000 200000 2400000`), automatically converted to internal OPP table indices by `ppm_main_freq_to_idx()`. Passing `-1` clears constraints to an unconstrained state.
+
+### 7.2 MediaTek Cobra Power Matrix (`cobra_budget_to_limit` & `cobra_limit_to_budget`)
+MediaTek's Cobra algorithm arbitrates multi-cluster power envelopes using calibrated power tables derived directly from [Upower.ko](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md). Cobra models all 256 cluster Operating Performance Point combinations $(6, \text{OPP}_L, 2, \text{OPP}_B)$ spanning 16 Little OPPs and 16 Big OPPs:
+
+* **Maximum Power Budget**:
+  - Configuration: $(6, 0, 2, 0) = 6 \text{ cores @ } 2000\text{ MHz} + 2 \text{ cores @ } 2400\text{ MHz}$.
+  - Total Power: $2,479\text{ mW}$ (down from stock $2,800+\text{ mW}$ due to calibrated -50.00 mV undervolt).
+* **Deep Idle Floor Budget**:
+  - Configuration: $(6, 15, 2, 15) = 6 \text{ cores @ } 200\text{ MHz} + 2 \text{ cores @ } 200\text{ MHz}$.
+  - Total Power: $293\text{ mW}$ (reflecting the 200 MHz underclock floor and dynamic power reduction).
+* **Multi-Cluster Budget Allocation**:
+  Writing an input budget in milliwatts to `/proc/ppm/cobra_budget_to_limit` (e.g. `1000` mW) calculates optimal multi-cluster capacity splits (e.g. $(6, 2, 2, 15) = 955\text{ mW}$ or $(6, 0, 0, 0) = 930\text{ mW}$). Because our static energy model in `Upower.ko` was recalculated with CMOS $V^2$ scaling, all Cobra budget allocations align precisely with actual bare-metal silicon power consumption.
+
+### 7.3 Touch Boost Deconstruction & PowerHAL Interaction Tuning
+Stock Dimensity 6080 firmware suffers from severe battery drain during everyday interactions (typing, scrolling, UI taps). Reverse-engineering revealed this drain is driven by an uncoordinated dual-layer boost system that completely overrides Energy Aware Scheduling.
+
+#### Dual-Layer Boost Architecture
+1. **Google PowerHAL (`pixel-libperfmgr`)**:
+   Monitors input interaction events (`INTERACTION` hint) defined in `/vendor/etc/powerhint.json`.
+2. **MediaTek Contable (`vendor.mediatek.hardware.mtkpower`)**:
+   Maintains proprietary boost resources in `/vendor/etc/powercontable.xml` (`PERF_RES_POWERHAL_TOUCH_BOOST_CLUSTER_*`).
+
+#### Stock Interaction Drain Anatomy
+When a user taps or flings the screen, stock `powerhint.json` enforces the following extreme clamps:
+* `CPUEfficiencyClusterMinFreq`: Clamped to `1325000` (1325 MHz) for **1500 ms**.
+* `CPUSuperClusterMinFreq`: Clamped to `1443000` (1443 MHz) for **1500 ms**.
+* `GpuPwrLevel`: Clamped to `0` (1068 MHz maximum GPU clock) for **1500 ms**.
+* `TAUclampMin`: Clamped to `30` for **5000 ms** (5 seconds).
+* `FGUclampMin`: Clamped to `10` for **3000 ms** (3 seconds).
+
+Because a typical user taps or scrolls every 1 to 2 seconds while reading, chatting, or web browsing, the CPU and GPU are continuously locked into high-power states, consuming over $1.5\text{ W}$ continuously for simple 2D display updates.
+
+#### Calibrated EAS-Aligned Interaction Tuning
+With EAS energy models and scheduler migration calibrated (`turn_point = 2` / 500 MHz), EAS schedutil responds within 2-4 ms to genuine thread runqueue demand. Heavy artificial boost durations are unnecessary.
+
+The module replaces `/vendor/etc/powerhint.json` with an optimized configuration:
+1. **Eliminate Big Core Minimum Clamp**: `CPUSuperClusterMinFreq` boost is removed. UI rendering threads remain on energy-efficient Little cores. When heavy operations occur (e.g. app cold start), EAS autonomously migrates threads to Big cores when utilization crosses the 500 MHz threshold.
+2. **Eliminate GPU Boost on 2D Touch**: `GpuPwrLevel` is removed from `INTERACTION`. The Mali-G57 GPU stays at its 390 MHz idle floor and scales dynamically via GED only when SurfaceFlinger / HWUI frame composition deadlines require it.
+3. **Gentle, Short Little Cluster Bump**: `CPUEfficiencyClusterMinFreq` is tuned to `703000` (703 MHz, OPP 13) for only **100 ms**. At 703 MHz (-50 mV @ 637.50 mV), dynamic power is only $24.8\text{ mW}$ per core, eliminating frame drop latency during the initial touch event while consuming a fraction of the energy.
+4. **uclamp Duration Reduction**: `TAUclampMin` and `FGUclampMin` durations are reduced from 5000 ms and 3000 ms down to **150 ms**.
+
+### 7.4 Screen-Off Standby Floor (`PPM_POLICY_LCM_OFF`)
+In stock firmware, `PPM_POLICY_LCM_OFF` (PPM Policy Index 8) is disabled by default (`is_enabled = 0`). The module activates this policy in [service.sh](file:///home/yamada/CODE/MT6833GP-Experiment/module/service.sh):
+```sh
+echo "8 1" > /proc/ppm/policy_status
+echo 200000 > /proc/ppm/policy/lcmoff_min_freq
+```
+When the display panel enters low power or sleeps, the Linux framebuffer notifier invokes `ppm_lcmoff_fb_notifier_callback()`, activating `LCM_OFF`. PPM enforces `lcmoff_min_freq = 200000` as the upper clamp for cluster 0, locking the system into the 200 MHz deep idle floor during screen-off sleep and eliminating background battery drain. Upon display unblank (`FB_BLANK_UNBLANK`), `LCM_OFF` immediately deactivates, restoring full dynamic range up to 2000/2400 MHz.
