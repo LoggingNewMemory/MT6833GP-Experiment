@@ -1,9 +1,9 @@
 <img width="2560" height="1080" alt="Frame" src="https://github.com/user-attachments/assets/fb497282-d56c-412a-ba92-3142076d2c8c" />
 
 [![Target: MT6833](https://img.shields.io/badge/SoC-Dimensity%206080%20%2F%20MT6833-blue.svg)](https://en.wikipedia.org/wiki/MediaTek)
-[![Root: KernelSU](https://img.shields.io/badge/Root-KernelSU%20%2F%20SukiSU%20Preinit-gr.svg)](https://github.com/tiann/KernelSU)
-[![GPU: Mali-G57 MC2](https://img.shields.io/badge/GPU-Mali--G57%20MC2%20%28--37.50mV%29-orange.svg)](https://developer.arm.com/Processors/Mali-G57)
-[![CPU: Cortex-A76/A55](https://img.shields.io/badge/CPU-Cortex--A76%2FA55%20%28--43.75mV%29-red.svg)](https://developer.arm.com/)
+[![Root: KernelSU-Next Pre-Init](https://img.shields.io/badge/Root-KernelSU--Next%20Pre--Init-green.svg)](https://github.com/KernelSU-Next/KernelSU-Next)
+[![GPU: Mali-G57 MC2](https://img.shields.io/badge/GPU-Mali--G57%20MC2-orange.svg)](https://developer.arm.com/Processors/Mali-G57)
+[![CPU: Cortex-A76/A55](https://img.shields.io/badge/CPU-Cortex--A76%2FA55-red.svg)](https://developer.arm.com/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-lightgrey.svg)](LICENSE)
 
 An open-source hardware reverse engineering and systems research project documenting the dynamic voltage and frequency scaling (DVFS) architecture, Energy Estimation Model (EEM) runtime mechanisms, and MT6359 Power Management IC (PMIC) cross-wiring on the MediaTek MT6833 platform (Dimensity 6080, Dimensity 810, Dimensity 700), validated on the TECNO Pova 5 Pro 5G (LH8n).
