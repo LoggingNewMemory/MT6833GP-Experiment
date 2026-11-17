@@ -565,7 +565,8 @@ If this open-source research helped your device run cooler, last longer, or aide
 * Global Support: [SociaBuzz Tribe](https://sociabuzz.com/kanagawa_yamada/tribe)
 * Indonesia Support: [QRIS Payment](https://t.me/KLAGen2/1166)
 
-Author: **Kana Wesley Yamada** ([@LoggingNewMemory](https://github.com/LoggingNewMemory))
+* Author: **Kana Wesley Yamada** ([@LoggingNewMemory](https://github.com/LoggingNewMemory))
+* Cover Art Character Model: **Akayuki Mikouca** ([YouTube Channel](https://www.youtube.com/@ayamikouca))
 
 ---
 
