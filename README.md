@@ -271,17 +271,19 @@ Measurements were recorded on a retail TECNO Pova 5 Pro 5G running Android 14 at
 | :--- | :---: | :---: | :---: |
 | Screen-On Idle (SoC Temp) | 35.8°C | **30.8°C** | **-5.0°C** |
 | Idle Core Power (Little CPU) | 650.00 mV @ 500 MHz | **587.50 mV @ 200 MHz** | **-62.50 mV / -300 MHz** |
-| Sustained Gaming (Battery Temp) | 42.5°C | **36.8°C** | **-5.7°C** |
-| Sustained Gaming (SoC Peak Temp) | 68.2°C | **59.4°C** | **-8.8°C** |
+| Sustained Load (Battery Temp) | 42.5°C | **36.8°C** | **-5.7°C** |
+| Sustained Load (SoC Peak Temp) | 68.2°C | **59.4°C** | **-8.8°C** |
 | Big CPU Under Load (2.4 GHz) | 1050.00 mV | **1006.25 mV** | **-43.75 mV** |
 
 ---
 
-### 4.3 Heavy Workload & Gaming Stability Proof
-To verify daily-driver stability, the device underwent sustained heavy loads:
-1. **Counter-Strike 2 Mobile / 3D Gaming Workload**: 45 minutes of continuous 3D rendering at 60 FPS.
-   * GPU governor dynamically scaled between OPP 37 (570 MHz @ 581.25 mV) and OPP 10 (954 MHz @ 756.25 mV).
-   * Verified zero frame freezes, zero GPU MMU faults (`mali_kbase` page fault ring clean), and zero thermal throttling events.
+### 4.3 Benchmark & Workload Stability Proof
+To verify daily-driver stability, the device underwent sustained benchmark stress testing:
+1. **DevCheck Benchmark & Stress Testing**:
+   * Complete multi-threaded CPU stress runs and 3D benchmark cycles.
+   * GPU governor dynamically scaled across active operating points (down to Step 37 @ 581.25 mV).
+   * Verified zero frame freezes, zero GPU MMU faults (`mali_kbase` page fault ring clean), and zero thermal throttling lockups.
+   * Device remained 100% stable with no kernel panics, system freezes, or unexpected reboots.
 2. **Governor Dynamic Step Verification**:
    Kernel `dmesg` confirmed proper governor operation at the unlocked 200 MHz floor:
    ```text
