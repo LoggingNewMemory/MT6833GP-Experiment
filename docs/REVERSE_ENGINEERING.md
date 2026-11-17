@@ -331,7 +331,8 @@ $$P_{\text{dyn}} = P_{\text{dyn, ref}} \times \frac{V_{\text{curr}}^2}{V_{\text{
 0x95c: autiasp
 0x960: ret
 ```
-The routine scans Little cluster OPPs top-down ($15 \to 0$), selecting the first OPP whose efficiency satisfies $\text{eff}_{\text{Little}} \le \text{eff}_{\text{Big, min}}$.
+The routine scans Little cluster OPPs top-down ($15 \to 0$), selecting the first OPP whose efficiency satisfies:
+$$\text{eff}(\text{Little}) \le \text{eff}(\text{Big, min})$$
 
 #### 4. EEM Overwrite Disarm & The ELF Relocation Collision Hazard
 

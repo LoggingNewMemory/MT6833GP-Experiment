@@ -189,7 +189,7 @@ We patch `Upower.ko` across four key dimensions:
 Inside `Upower.ko`, `get_L_pwr_efficiency()`, `get_LL_pwr_efficiency()`, and `upower_cal_turn_point()` compute task migration thresholds:
 $$\text{Efficiency} = \frac{P_{\text{total}}}{\text{Capacity}} = \frac{P_{\text{dyn}} + P_{\text{lkg}}}{\text{Capacity}}$$
 
-In `upower_cal_turn_point()`, the kernel compares Little cluster efficiency against the Big cluster's minimum efficiency point ($\text{eff}_{\text{Big, min}}$), scanning Little OPPs from index 15 down to 0:
+In `upower_cal_turn_point()`, the kernel compares Little cluster efficiency against the Big cluster minimum efficiency floor (`min_eff`), scanning Little OPPs from index 15 down to 0:
 ```c
 min_eff = get_L_min_efficiency(); // Minimum efficiency across Big cluster OPPs
 for (i = 15; i >= 0; i--) {
@@ -201,21 +201,21 @@ for (i = 15; i >= 0; i--) {
 ```
 
 * **Stock Turn Point Evaluation**:
-  - Stock lowest Big OPP was 500 MHz ($P_{\text{dyn}} = 88,853\ \mu\text{W}$, $P_{\text{lkg0}} = 103,988\ \mu\text{W}$, $\text{cap} = 611$): $\text{eff}_{\min} = \frac{88853 + 103988}{611} = 315$.
+  - Stock lowest Big OPP was 500 MHz ($P_{\text{dyn}} = 88,853\ \mu\text{W}$, $P_{\text{lkg0}} = 103,988\ \mu\text{W}$, $\text{cap} = 611$): $\text{eff} = \frac{88853 + 103988}{611} = 315$.
   - Little OPP 6 ($1048\text{ MHz}$): $\text{eff} = 311 \le 315$.
   - Little OPP 7 ($1128\text{ MHz}$): $\text{eff} = 321 > 315$.
-  - Result: `turn_point` $= 6 + 1 = 7$ ($1048\text{ MHz}$).
+  - Result: `turn_point = 6 + 1 = 7` (1048 MHz).
 
 * **Calibrated Undervolt & 200 MHz Underclock Floor Evaluation**:
   - Unlocking the 200 MHz underclock floor on Big cores reduces Big OPP 0 dynamic power by **-62.9%** (down to $32,928\ \mu\text{W}$ @ 581.25 mV).
   - Under live operating conditions with thermal leakage scaling (Leakage Index 4 in `/proc/upower/upower_debug`):
     - Big OPP 0 ($200\text{ MHz}$): $P_{\text{dyn}} = 32,928\ \mu\text{W}$, $P_{\text{lkg}} = 175,000\ \mu\text{W}$, $\text{cap} = 611 \implies \text{eff} = \frac{32928 + 175000}{611} = 340$.
     - Big OPP 1 ($500\text{ MHz}$): $P_{\text{dyn}} = 85,900\ \mu\text{W}$, $P_{\text{lkg}} = 175,000\ \mu\text{W}$, $\text{cap} = 667 \implies \text{eff} = \frac{85900 + 175000}{667} = 391$.
-    - Big cluster minimum efficiency shifts to $\text{eff}_{\min} = 340$ at the 200 MHz floor *(or $\text{eff}_{\min} = 224$ in static tables without runtime thermal leakage updates)*.
+    - Big cluster minimum efficiency shifts to $\text{eff} = 340$ at the 200 MHz floor (or $\text{eff} = 224$ in static tables without runtime thermal leakage updates).
   - Evaluating Little cluster OPPs top-down ($15 \to 0$):
     - Little OPP 2 ($703\text{ MHz}$): $P_{\text{dyn}} = 22,145\ \mu\text{W}$, $P_{\text{lkg}} = 46,000\ \mu\text{W}$, $\text{cap} = 193 \implies \text{eff} = 353 > 340$.
     - Little OPP 1 ($500\text{ MHz}$): $P_{\text{dyn}} = 18,479\ \mu\text{W}$, $P_{\text{lkg}} = 43,000\ \mu\text{W}$, $\text{cap} = 181 \implies \text{eff} = 339 \le 340$ (Match).
-    - Result: `turn_point` $= 1 + 1 = 2$ ($500\text{ MHz}$).
+    - Result: `turn_point = 1 + 1 = 2` (500 MHz).
 
 * **Verified Hardware Confirmation**:
   Live hardware reading via `/proc/upower/upower_debug`:
@@ -252,17 +252,17 @@ PPM maintains an internal priority hierarchy exposed through `/proc/ppm/dump_pol
 #### Arbitration Engine (`mt_ppm_main`)
 Every cycle or policy update, `mt_ppm_main()` evaluates all active and enabled policies:
 1. **OPP Index Bounds**: For each cluster, policies submit `(min_freq_idx, max_freq_idx, min_core_num, max_core_num)`. Note that in MediaTek convention, OPP index `0` represents the maximum frequency (highest clock speed) while index `15` represents the floor (200 MHz).
-2. **Aggregated Final Limit**: PPM takes the union of constraints:
-   $$\text{Final}_{\min} = \min_{k}(\text{policy}_{k,\min})$$
-   $$\text{Final}_{\max} = \max_{k}(\text{policy}_{k,\max})$$
-   Taking the minimum index for $\text{Final}_{\min}$ (`min_freq_idx`) enforces the highest lower-bound clock, while taking the maximum index for $\text{Final}_{\max}$ (`max_freq_idx`) enforces the lowest upper-bound ceiling.
+2. **Aggregated Final Limit**: PPM takes the union of constraints across all active policies:
+   $$F_{\min} = \min_{k}(P_{k, \min})$$
+   $$F_{\max} = \max_{k}(P_{k, \max})$$
+   Where $F_{\min}$ (`min_freq_idx`) takes the minimum index to enforce the highest lower-bound clock, and $F_{\max}$ (`max_freq_idx`) takes the maximum index to enforce the lowest upper-bound ceiling.
 3. **Cpufreq QoS Synchronization**: PPM looks up the frequency corresponding to `Final max_idx` and `Final min_idx` in the cluster DVFS tables via `ppm_main_freq_to_idx()` and calls:
    - `freq_qos_update_request(&cluster->qos_min, min_freq_khz)`
    - `freq_qos_update_request(&cluster->qos_max, max_freq_khz)`
 4. **Sysfs Node Interface**: The nodes `/proc/ppm/policy/hard_userlimit_cpu_freq`, `userlimit_cpu_freq`, `hard_userlimit_max_cpu_freq`, and `hard_userlimit_min_cpu_freq` accept frequency values in **kHz** (e.g. `200000 2000000 200000 2400000`), automatically converted to internal OPP table indices by `ppm_main_freq_to_idx()`. Passing `-1` clears constraints to an unconstrained state.
 
 ### 7.2 MediaTek Cobra Power Matrix (`cobra_budget_to_limit` & `cobra_limit_to_budget`)
-MediaTek's Cobra algorithm arbitrates multi-cluster power envelopes using calibrated power tables derived directly from [Upower.ko](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md). Cobra models all 256 cluster Operating Performance Point combinations $(6, \text{OPP}_L, 2, \text{OPP}_B)$ spanning 16 Little OPPs and 16 Big OPPs:
+MediaTek's Cobra algorithm arbitrates multi-cluster power envelopes using calibrated power tables derived directly from [Upower.ko](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md). Cobra models all 256 cluster Operating Performance Point combinations `(6, OPP_L, 2, OPP_B)` spanning 16 Little OPPs and 16 Big OPPs:
 
 * **Maximum Power Budget**:
   - Configuration: $(6, 0, 2, 0) = 6 \text{ cores @ } 2000\text{ MHz} + 2 \text{ cores @ } 2400\text{ MHz}$.

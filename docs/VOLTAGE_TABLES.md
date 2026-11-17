@@ -219,9 +219,9 @@ Each operating point pairs memory clock frequency (DDR) with Vcore voltage level
 ## 6. MediaTek Cobra Multi-Cluster Power Allocation Tables
 
 ### 6.1 Operational Range & Boundaries
-MediaTek Power Policy Manager (PPM) dynamically evaluates thermal and battery current constraints using the Cobra algorithm. Cobra utilizes dynamic and leakage power models from [Upower.ko](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md) across all 256 cluster combinations $(6, \text{OPP}_L, 2, \text{OPP}_B)$:
+MediaTek Power Policy Manager (PPM) dynamically evaluates thermal and battery current constraints using the Cobra algorithm. Cobra utilizes dynamic and leakage power models from [Upower.ko](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md) across all 256 cluster combinations `(6, OPP_L, 2, OPP_B)`:
 
-| State | Configuration $(N_L, \text{OPP}_L, N_B, \text{OPP}_B)$ | Little Frequency | Big Frequency | Total Power Budget | Delta vs Stock |
+| State | Configuration `(N_L, OPP_L, N_B, OPP_B)` | Little Frequency | Big Frequency | Total Power Budget | Delta vs Stock |
 | :---: | :---: | :---: | :---: | :---: | :---: |
 | **Absolute Floor** | $(6, 15, 2, 15)$ | 200 MHz | 200 MHz | **293 mW** | -58.8% |
 | **Little Idle Floor** | $(6, 15, 0, 0)$ | 200 MHz | Offline (0 cores) | **42 mW** | -58.4% |
@@ -232,7 +232,7 @@ MediaTek Power Policy Manager (PPM) dynamically evaluates thermal and battery cu
 ### 6.2 Cobra Budget Envelopes (`/proc/ppm/cobra_budget_to_limit`)
 Writing a power ceiling (in milliwatts) to `/proc/ppm/cobra_budget_to_limit` yields the optimal cluster configuration that maximizes compute throughput while remaining within the designated thermal or battery power envelope:
 
-| Target Power Budget | Allocated Configuration $(N_L, \text{OPP}_L, N_B, \text{OPP}_B)$ | Little Frequency Limit | Big Frequency Limit | Effective Power | Primary Use Case |
+| Target Power Budget | Allocated Configuration `(N_L, OPP_L, N_B, OPP_B)` | Little Frequency Limit | Big Frequency Limit | Effective Power | Primary Use Case |
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **300 mW** | $(6, 15, 2, 15)$ | 200 MHz (OPP 15) | 200 MHz (OPP 15) | 293 mW | Screen-Off Standby & Audio Playback |
 | **500 mW** | $(6, 13, 2, 15)$ | 703 MHz (OPP 13) | 200 MHz (OPP 15) | 496 mW | Background Sync & Light UI Reading |
