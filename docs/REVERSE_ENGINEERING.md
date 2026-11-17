@@ -53,17 +53,21 @@ ret          // \xc0\x03\x5f\xd6
 ## 2. `mtk_gpufreq_mt6833.ko` Reverse Engineering
 
 ### Table Structure: `g_default_gpu`
-Located in `.rodata` at offset `0x1928`:
-Each entry is 24 bytes (`3 x uint64_t`):
+Located in `.rodata` at file offset `0xb4e8` (identified by header signature `1068000` / `0x00104cb0`):
+Each entry is 24 bytes (`6 x uint32_t`):
 ```c
 struct gpu_opp_entry {
-    uint64_t freq_khz;   // e.g. 1068000 (1068 MHz)
-    uint64_t vgpu_10uv;  // e.g. 85000 (850.00 mV)
-    uint64_t vsram_10uv; // e.g. 85000 (850.00 mV)
+    uint32_t freq_khz;   // e.g. 1068000 (1068 MHz)
+    uint32_t vgpu_10uv;  // Core voltage in 10 uV units (80000 = 800.00 mV)
+    uint32_t vsram_10uv; // SRAM voltage in 10 uV units (80000 = 800.00 mV)
+    uint32_t posdiv;     // Post-divider configuration
+    uint32_t vaging;     // Aging voltage offset
+    uint32_t power;      // Power rating index
 };
 ```
 * 45 Total Operating Points (from 1068 MHz down to 390 MHz).
-* Voltage values are stored in 10 uV units ($85000 \times 10\text{ uV} = 850000\text{ uV} = 850.00\text{ mV}$).
+* Voltage values are stored in 10 uV units ($80000 \times 10\text{ uV} = 800000\text{ uV} = 800.00\text{ mV}$).
+* **Hardware Limit**: $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$. Clamped at lower frequencies to prevent MT6359 over-differential shutdown.
 
 ---
 

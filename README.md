@@ -31,7 +31,7 @@ Mobile SoCs produced by MediaTek typically ship with overly conservative factory
 Through static binary reverse engineering in Ghidra and live kernel debugging via KernelSU on Android 14 (Kernel 5.10.209-android12-9-00003-g2da54020a775), this project achieves:
 1. **Physical 200 MHz CPU Idle Floor**: Unlocking the hardware PLL post-dividers to reduce core frequencies from 500 MHz down to 200 MHz @ 581.25 mV (Step 29, a=4, b=2) while maintaining PLL VCO phase lock.
 2. **Aggressive -50.00 mV CPU & Cache SRAM Undervolt (v1.8 Profile)**: A verified reduction of up to **-50.00 mV** across high-frequency operating points on both Little (OPP 0: 950.00 mV) and Big (OPP 0: 1000.00 mV) CPU clusters, dynamically tracking Cache SRAM (`vsram_proc1` & `vsram_proc2`) down to 800.00–912.50 mV.
-3. **Mali-G57 MC2 GPU Undervolt**: A verified **-37.50 mV** undervolt across all 45 GPU operating points, while strictly adhering to the mandatory $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$ hardware constraint.
+3. **Mali-G57 MC2 GPU Undervolt**: A verified **-50.00 mV** aggressive undervolt across high/mid GPU operating points (OPP 0: 800.00 mV @ 1068 MHz), while strictly adhering to the mandatory $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$ hardware constraint.
 4. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
 5. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
 6. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula $V_{\text{sram}} = \max(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV})$, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
@@ -250,13 +250,16 @@ $$\text{Voltage (uV)} = (\text{Step} \times 6.25 + 400.0) \times 1000$$
 ---
 
 ### 3.4 Mali-G57 MC2 GPU Table & Hardware Delta Constraint
-The GPU OPP table resides in `mtk_gpufreq_mt6833.ko` at offset `0x1928` (`g_default_gpu`), consisting of 45 operating points:
+The GPU OPP table resides in `mtk_gpufreq_mt6833.ko` at file offset `0xb4e8` (`g_default_gpu`), consisting of 45 operating points:
 
 ```c
 struct gpu_opp_entry {
-    uint64_t freq_khz;   /* e.g., 1068000 (1068 MHz)                */
-    uint64_t vgpu_10uv;  /* Core voltage in 10 uV units (85000 = 850.00 mV) */
-    uint64_t vsram_10uv; /* SRAM voltage in 10 uV units (85000 = 850.00 mV) */
+    uint32_t freq_khz;   /* Target frequency (e.g., 1068000 = 1068 MHz)       */
+    uint32_t vgpu_10uv;  /* Core voltage in 10 uV units (80000 = 800.00 mV)  */
+    uint32_t vsram_10uv; /* SRAM voltage in 10 uV units (80000 = 800.00 mV)  */
+    uint32_t posdiv;     /* Post-divider configuration                       */
+    uint32_t vaging;     /* Aging voltage offset                             */
+    uint32_t power;      /* Normalized power index                           */
 };
 ```
 
@@ -269,12 +272,13 @@ Violating this threshold trips hardware over-voltage differential protection on 
 
 | OPP Index | Frequency | Stock Vgpu | Patched Vgpu | Stock Vsram | Patched Vsram | Hardware Delta |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| 0 (Max) | 1068 MHz | 850.00 mV | **812.50 mV** | 850.00 mV | **812.50 mV** | 0.00 mV |
-| 1 | 1058 MHz | 843.75 mV | **806.25 mV** | 843.75 mV | **806.25 mV** | 0.00 mV |
-| 10 | 954 MHz | 793.75 mV | **756.25 mV** | 793.75 mV | **756.25 mV** | 0.00 mV |
-| 20 | 800 MHz | 725.00 mV | **687.50 mV** | 750.00 mV | **750.00 mV** | 62.50 mV |
-| 37 | 570 MHz | 618.75 mV | **581.25 mV** | 750.00 mV | **750.00 mV** | 168.75 mV |
-| 44 (Min) | 390 MHz | 550.00 mV | **550.00 mV** | 750.00 mV | **750.00 mV** | 200.00 mV |
+| 0 (Max) | 1068 MHz | 850.00 mV | **800.00 mV** | 850.00 mV | **800.00 mV** | 0.00 mV |
+| 1 | 1059 MHz | 843.75 mV | **793.75 mV** | 843.75 mV | **793.75 mV** | 0.00 mV |
+| 5 | 1025 MHz | 818.75 mV | **768.75 mV** | 818.75 mV | **768.75 mV** | 0.00 mV |
+| 10 | 970 MHz | 787.50 mV | **737.50 mV** | 787.50 mV | **750.00 mV** | 12.50 mV |
+| 20 | 835 MHz | 725.00 mV | **675.00 mV** | 750.00 mV | **750.00 mV** | 75.00 mV |
+| 37 | 570 MHz | 618.75 mV | **568.75 mV** | 750.00 mV | **750.00 mV** | 181.25 mV |
+| 44 (Min) | 390 MHz | 575.00 mV | **550.00 mV** | 750.00 mV | **750.00 mV** | 200.00 mV |
 
 ---
 

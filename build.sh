@@ -30,7 +30,7 @@ python3 "${SCRIPT_DIR}/scripts/patch_dvfs.py" \
     -i "${STOCK_DIR}/CPU_DVFS.ko" \
     -o "${OUT_DIR}/CPU_DVFS.ko"
 
-echo "[*] Step 2: Patching mtk_gpufreq_mt6833.ko (-37.50mV Mali-G57 OPPs)..."
+echo "[*] Step 2: Patching mtk_gpufreq_mt6833.ko (-50.00mV Mali-G57 OPPs)..."
 python3 "${SCRIPT_DIR}/scripts/patch_gpufreq.py" \
     -i "${STOCK_DIR}/mtk_gpufreq_mt6833.ko" \
     -o "${OUT_DIR}/mtk_gpufreq_mt6833.ko"

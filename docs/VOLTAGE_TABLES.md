@@ -74,7 +74,7 @@ $$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{
 
 ---
 
-## 3. GPU OPP Table (Mali-G57 MC2, -37.50 mV Profile)
+## 3. GPU OPP Table (Mali-G57 MC2, -50.00 mV Profile)
 The GPU table consists of 45 operating points inside `g_default_gpu` in `mtk_gpufreq_mt6833.ko`.
 
 * **Hardware Limit**: $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$ (Strictly enforced by hardware).
@@ -82,7 +82,13 @@ The GPU table consists of 45 operating points inside `g_default_gpu` in `mtk_gpu
 
 | OPP Index | Frequency | Stock Vgpu | Patched Vgpu | Stock Vsram | Patched Vsram | Delta (Vsram-Vgpu) |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| 0 (Max) | 1068 MHz | 850.00 mV | **812.50 mV** | 850.00 mV | **812.50 mV** | 0.00 mV |
+| 0 (Max) | 1068 MHz | 850.00 mV | **800.00 mV** | 850.00 mV | **800.00 mV** | 0.00 mV |
+| 1 | 1059 MHz | 843.75 mV | **793.75 mV** | 843.75 mV | **793.75 mV** | 0.00 mV |
+| 5 | 1025 MHz | 818.75 mV | **768.75 mV** | 818.75 mV | **768.75 mV** | 0.00 mV |
+| 10 | 970 MHz | 787.50 mV | **737.50 mV** | 787.50 mV | **750.00 mV** | 12.50 mV |
+| 20 | 835 MHz | 725.00 mV | **675.00 mV** | 750.00 mV | **750.00 mV** | 75.00 mV |
+| 37 | 570 MHz | 618.75 mV | **568.75 mV** | 750.00 mV | **750.00 mV** | 181.25 mV |
+| 44 (Min) | 390 MHz | 575.00 mV | **550.00 mV** | 750.00 mV | **750.00 mV** | 200.00 mV |
 | 1 | 1058 MHz | 843.75 mV | **806.25 mV** | 843.75 mV | **806.25 mV** | 0.00 mV |
 | 10 | 954 MHz | 793.75 mV | **756.25 mV** | 793.75 mV | **756.25 mV** | 0.00 mV |
 | 20 | 800 MHz | 725.00 mV | **687.50 mV** | 750.00 mV | **750.00 mV** | 62.50 mV |
