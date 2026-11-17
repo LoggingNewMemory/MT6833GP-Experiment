@@ -7,61 +7,70 @@ $$\text{Voltage (uV)} = (\text{Step} \times 6.25 + 400.0) \times 1000$$
 
 * Step `0` = $400.00\text{ mV}$
 * Step `24` (`0x18`) = $550.00\text{ mV}$ (Hardware PMIC floor)
-* Step `30` (`0x1e`) = $587.50\text{ mV}$
-* Step `89` (`0x59`) = $956.25\text{ mV}$
-* Step `97` (`0x61`) = $1006.25\text{ mV}$
+* Step `29` (`0x1d`) = $581.25\text{ mV}$ (v1.8 minimum underclock voltage)
+* Step `88` (`0x58`) = $950.00\text{ mV}$ (v1.8 Little OPP 0)
+* Step `96` (`0x60`) = $1000.00\text{ mV}$ (v1.8 Big OPP 0)
 
 ---
 
-## 2. CPU OPP Tables (Edge of the Cliff -43.75 mV Profile)
+## 2. CPU OPP Tables (v1.8 Profile: -50.00 mV CPU & Cache SRAM)
 
 ### Little Cluster (6x Cortex-A55)
 * Stock Range: 500 MHz (550.00 mV eFuse / 650.00 mV nominal) – 2000 MHz (812.50 mV eFuse / 1000.00 mV nominal)
-* Patched Range: **200 MHz (587.50 mV) – 2000 MHz (956.25 mV)**
+* Patched Range: **200 MHz (581.25 mV) – 2000 MHz (950.00 mV)**
 
 | OPP Index | Frequency | Stock Nominal | Stock eFuse | Patched Nominal | Delta vs Stock | PLL Config (a, b) | VCO Freq |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| 0 | 2000 MHz | 1000.00 mV | 812.50 mV | **956.25 mV** | -43.75 mV | (1, 1) | 2000 MHz |
-| 1 | 1916 MHz |  975.00 mV | 787.50 mV | **931.25 mV** | -43.75 mV | (1, 1) | 1916 MHz |
-| 2 | 1812 MHz |  943.75 mV | 750.00 mV | **900.00 mV** | -43.75 mV | (1, 1) | 1812 MHz |
-| 3 | 1750 MHz |  925.00 mV | 731.25 mV | **881.25 mV** | -43.75 mV | (1, 1) | 1750 MHz |
-| 4 | 1645 MHz |  893.75 mV | 693.75 mV | **850.00 mV** | -43.75 mV | (2, 1) | 3290 MHz |
-| 5 | 1500 MHz |  850.00 mV | 643.75 mV | **806.25 mV** | -43.75 mV | (2, 1) | 3000 MHz |
-| 6 | 1393 MHz |  825.00 mV | 637.50 mV | **781.25 mV** | -43.75 mV | (2, 1) | 2786 MHz |
-| 7 | 1287 MHz |  800.00 mV | 625.00 mV | **756.25 mV** | -43.75 mV | (2, 1) | 2574 MHz |
-| 8 | 1128 MHz |  762.50 mV | 606.25 mV | **718.75 mV** | -43.75 mV | (2, 1) | 2256 MHz |
-| 9 | 1048 MHz |  743.75 mV | 600.00 mV | **700.00 mV** | -43.75 mV | (2, 1) | 2096 MHz |
-| 10 |  968 MHz |  725.00 mV | 587.50 mV | **681.25 mV** | -43.75 mV | (2, 1) | 1936 MHz |
-| 11 |  862 MHz |  700.00 mV | 581.25 mV | **668.75 mV** | -31.25 mV | (2, 1) | 1724 MHz |
-| 12 |  756 MHz |  675.00 mV | 568.75 mV | **643.75 mV** | -31.25 mV | (4, 1) | 3024 MHz |
-| 13 |  703 MHz |  662.50 mV | 562.50 mV | **631.25 mV** | -31.25 mV | (4, 1) | 2812 MHz |
-| 14 |  500 MHz |  650.00 mV | 550.00 mV | **600.00 mV** | -50.00 mV | (4, 1) | 2000 MHz |
-| 15 | **200 MHz** | *(unlocked)* | *(unlocked)* | **587.50 mV** | **Underclock** | (4, 2) | 1600 MHz |
+| 0 | 2000 MHz | 1000.00 mV | 812.50 mV | **950.00 mV** | -50.00 mV | (1, 1) | 2000 MHz |
+| 1 | 1916 MHz |  975.00 mV | 787.50 mV | **925.00 mV** | -50.00 mV | (1, 1) | 1916 MHz |
+| 2 | 1812 MHz |  943.75 mV | 750.00 mV | **893.75 mV** | -50.00 mV | (1, 1) | 1812 MHz |
+| 3 | 1750 MHz |  925.00 mV | 731.25 mV | **875.00 mV** | -50.00 mV | (1, 1) | 1750 MHz |
+| 4 | 1645 MHz |  893.75 mV | 693.75 mV | **843.75 mV** | -50.00 mV | (2, 1) | 3290 MHz |
+| 5 | 1500 MHz |  850.00 mV | 643.75 mV | **800.00 mV** | -50.00 mV | (2, 1) | 3000 MHz |
+| 6 | 1393 MHz |  825.00 mV | 637.50 mV | **775.00 mV** | -50.00 mV | (2, 1) | 2786 MHz |
+| 7 | 1287 MHz |  800.00 mV | 625.00 mV | **750.00 mV** | -50.00 mV | (2, 1) | 2574 MHz |
+| 8 | 1128 MHz |  762.50 mV | 606.25 mV | **712.50 mV** | -50.00 mV | (2, 1) | 2256 MHz |
+| 9 | 1048 MHz |  743.75 mV | 600.00 mV | **693.75 mV** | -50.00 mV | (2, 1) | 2096 MHz |
+| 10 |  968 MHz |  725.00 mV | 587.50 mV | **675.00 mV** | -50.00 mV | (2, 1) | 1936 MHz |
+| 11 |  862 MHz |  700.00 mV | 581.25 mV | **662.50 mV** | -37.50 mV | (2, 1) | 1724 MHz |
+| 12 |  756 MHz |  675.00 mV | 568.75 mV | **637.50 mV** | -37.50 mV | (4, 1) | 3024 MHz |
+| 13 |  703 MHz |  662.50 mV | 562.50 mV | **625.00 mV** | -37.50 mV | (4, 1) | 2812 MHz |
+| 14 |  500 MHz |  650.00 mV | 550.00 mV | **593.75 mV** | -56.25 mV | (4, 1) | 2000 MHz |
+| 15 | **200 MHz** | *(unlocked)* | *(unlocked)* | **581.25 mV** | **Underclock** | (4, 2) | 1600 MHz |
 
 ---
 
 ### Big Cluster (2x Cortex-A76)
 * Stock Range: 725 MHz (550.00 mV eFuse / 650.00 mV nominal) – 2400 MHz (781.25 mV eFuse / 1050.00 mV nominal)
-* Patched Range: **200 MHz (587.50 mV) – 2400 MHz (1006.25 mV)**
+* Patched Range: **200 MHz (581.25 mV) – 2400 MHz (1000.00 mV)**
 
 | OPP Index | Frequency | Stock Nominal | Stock eFuse | Patched Nominal | Delta vs Stock | PLL Config (a, b) | VCO Freq |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| 0 | 2400 MHz | 1050.00 mV | 781.25 mV | **1006.25 mV** | -43.75 mV | (1, 1) | 2400 MHz |
-| 1 | 2306 MHz | 1031.25 mV | 762.50 mV | **987.50 mV** | -43.75 mV | (1, 1) | 2306 MHz |
-| 2 | 2203 MHz | 1012.50 mV | 743.75 mV | **968.75 mV** | -43.75 mV | (1, 1) | 2203 MHz |
-| 3 | 2118 MHz |  993.75 mV | 725.00 mV | **950.00 mV** | -43.75 mV | (1, 1) | 2118 MHz |
-| 4 | 1993 MHz |  968.75 mV | 700.00 mV | **925.00 mV** | -43.75 mV | (1, 1) | 1993 MHz |
-| 5 | 1837 MHz |  937.50 mV | 668.75 mV | **893.75 mV** | -43.75 mV | (1, 1) | 1837 MHz |
-| 6 | 1650 MHz |  900.00 mV | 631.25 mV | **856.25 mV** | -43.75 mV | (2, 1) | 3300 MHz |
-| 7 | 1534 MHz |  868.75 mV | 625.00 mV | **825.00 mV** | -43.75 mV | (2, 1) | 3068 MHz |
-| 8 | 1418 MHz |  837.50 mV | 612.50 mV | **793.75 mV** | -43.75 mV | (2, 1) | 2836 MHz |
-| 9 | 1274 MHz |  800.00 mV | 600.00 mV | **756.25 mV** | -43.75 mV | (2, 1) | 2548 MHz |
-| 10 | 1129 MHz |  756.25 mV | 587.50 mV | **712.50 mV** | -43.75 mV | (2, 1) | 2258 MHz |
-| 11 | 1042 MHz |  737.50 mV | 581.25 mV | **693.75 mV** | -43.75 mV | (2, 1) | 2084 MHz |
-| 12 |  985 MHz |  718.75 mV | 575.00 mV | **687.50 mV** | -31.25 mV | (2, 1) | 1970 MHz |
-| 13 |  898 MHz |  693.75 mV | 568.75 mV | **662.50 mV** | -31.25 mV | (2, 1) | 1796 MHz |
-| 14 |  500 MHz |  681.25 mV | 562.50 mV | **600.00 mV** | -81.25 mV | (4, 1) | 2000 MHz |
-| 15 | **200 MHz** | *(unlocked)* | 550.00 mV | **587.50 mV** | **Underclock** | (4, 2) | 1600 MHz |
+| 0 | 2400 MHz | 1050.00 mV | 781.25 mV | **1000.00 mV** | -50.00 mV | (1, 1) | 2400 MHz |
+| 1 | 2306 MHz | 1031.25 mV | 762.50 mV | **981.25 mV** | -50.00 mV | (1, 1) | 2306 MHz |
+| 2 | 2203 MHz | 1012.50 mV | 743.75 mV | **962.50 mV** | -50.00 mV | (1, 1) | 2203 MHz |
+| 3 | 2118 MHz |  993.75 mV | 725.00 mV | **943.75 mV** | -50.00 mV | (1, 1) | 2118 MHz |
+| 4 | 1993 MHz |  968.75 mV | 700.00 mV | **918.75 mV** | -50.00 mV | (1, 1) | 1993 MHz |
+| 5 | 1837 MHz |  937.50 mV | 668.75 mV | **887.50 mV** | -50.00 mV | (1, 1) | 1837 MHz |
+| 6 | 1650 MHz |  900.00 mV | 631.25 mV | **850.00 mV** | -50.00 mV | (2, 1) | 3300 MHz |
+| 7 | 1534 MHz |  868.75 mV | 625.00 mV | **818.75 mV** | -50.00 mV | (2, 1) | 3068 MHz |
+| 8 | 1418 MHz |  837.50 mV | 612.50 mV | **787.50 mV** | -50.00 mV | (2, 1) | 2836 MHz |
+| 9 | 1274 MHz |  800.00 mV | 600.00 mV | **750.00 mV** | -50.00 mV | (2, 1) | 2548 MHz |
+| 10 | 1129 MHz |  756.25 mV | 587.50 mV | **706.25 mV** | -50.00 mV | (2, 1) | 2258 MHz |
+| 11 | 1042 MHz |  737.50 mV | 581.25 mV | **687.50 mV** | -50.00 mV | (2, 1) | 2084 MHz |
+| 12 |  985 MHz |  718.75 mV | 575.00 mV | **681.25 mV** | -37.50 mV | (2, 1) | 1970 MHz |
+| 13 |  898 MHz |  693.75 mV | 568.75 mV | **656.25 mV** | -37.50 mV | (2, 1) | 1796 MHz |
+| 14 |  500 MHz |  681.25 mV | 562.50 mV | **593.75 mV** | -87.50 mV | (4, 1) | 2000 MHz |
+| 15 | **200 MHz** | *(unlocked)* | 550.00 mV | **581.25 mV** | **Underclock** | (4, 2) | 1600 MHz |
+
+---
+
+### CPU Cache SRAM Dynamic Tracking (vsram_proc1 / vsram_proc2)
+The MT6833 MCUPM coprocessor dynamically tracks CPU logic voltage ($V_{\text{proc}}$) using the hardware rule:
+$$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)$$
+
+* At full 2.4 GHz Big load: $V_{\text{proc2}} = 812.50\text{ mV} \implies V_{\text{sram2}} = 912.50\text{ mV}$.
+* At idle / low frequency ($\le 1400\text{ MHz}$): $V_{\text{sram}}$ clamps cleanly to the **750.00 mV** hardware floor to protect 6T SRAM bitcell retention ($V_{\text{min}}$).
 
 ---
 

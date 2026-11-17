@@ -1,6 +1,6 @@
 id=lh8n_undervolt
 name=TECNO LH8n UnderVolt & UnderClock
-version=v1.7
-versionCode=170
+version=v1.8
+versionCode=180
 author=Kana Wesley Yamada
-description=Patched CPU_DVFS.ko (200MHz minfreq + EEM bypass + Edge of the Cliff -43.75mV CPU) and mtk_gpufreq_mt6833.ko (-37.50mV GPU) for MT6833 / Dimensity 6080.
+description=Patched CPU_DVFS.ko (200MHz minfreq + EEM bypass + -50.00mV CPU & Cache SRAM) and mtk_gpufreq_mt6833.ko (-37.50mV GPU) for MT6833 / Dimensity 6080.

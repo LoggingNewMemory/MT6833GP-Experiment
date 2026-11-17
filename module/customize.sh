@@ -1,7 +1,7 @@
 #!/system/bin/sh
 
 ui_print "- Installing TECNO LH8n UnderVolt & UnderClock"
-ui_print "- Version: v1.7"
+ui_print "- Version: v1.8"
 ui_print "- Author: Kana Wesley Yamada"
 
 # 1. Check root environment (Preinit requires KernelSU or SukiSU)
