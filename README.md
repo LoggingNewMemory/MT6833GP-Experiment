@@ -32,14 +32,14 @@ Mobile SoCs produced by MediaTek typically ship with overly conservative factory
 Through static binary reverse engineering in Ghidra and live kernel debugging via KernelSU on Android 14 (Kernel 5.10.270-SuiKernel-Experimental-KernelSU-Next), this project achieves:
 1. **Physical 200 MHz CPU Idle Floor**: Unlocking the hardware PLL post-dividers to reduce core frequencies from 500 MHz down to 200 MHz @ 581.25 mV (Step 29, a=4, b=2) while maintaining PLL VCO phase lock.
 2. **Aggressive -50.00 mV CPU & Cache SRAM Undervolt (v1.8 Profile)**: A verified reduction of up to **-50.00 mV** across high-frequency operating points on both Little (OPP 0: 950.00 mV) and Big (OPP 0: 1000.00 mV) CPU clusters, dynamically tracking Cache SRAM (`vsram_proc1` & `vsram_proc2`) down to 800.00–912.50 mV.
-3. **Mali-G57 MC2 GPU Undervolt**: A verified **-50.00 mV** aggressive undervolt across high/mid GPU operating points (OPP 0: 800.00 mV @ 1068 MHz), while strictly adhering to the mandatory $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$ hardware constraint.
+3. **Mali-G57 MC2 GPU Undervolt**: A verified **-50.00 mV** aggressive undervolt across high/mid GPU operating points (OPP 0: 800.00 mV @ 1068 MHz), while strictly adhering to the mandatory `Delta(Vsram - Vgpu) <= 200.00 mV` hardware constraint.
 4. **DVFSRC Vcore -75.00 mV Capped Voltage (v2.1 Profile)**: Resolved the dynamic 120Hz display refresh rate (`dispsys_config`) and regulator consumer override by clamping DVFSRC Vcore requests from Level 3 (725.00 mV) down to Level 2 (650.00 mV) via an atomic 1-instruction ARM64 bitwise clamp (`bic Rd, Rn, Rn, lsr #1`).
-5. **Calibrated EAS Energy Model (`Upower.ko`, v2.2 Profile)**: Reverse-engineered MediaTek Unified Power (`Upower.ko`), scaling static dynamic power curves by the physical CMOS equation $P \propto V^2$, scaling 200 MHz floor idle power down ~60% (17,036 uW -> 7,083 uW), calibrating EAS migration `turn_point` to OPP 2 (500 MHz) reflecting the 200 MHz Big core underclock floor (confirmed via `/proc/upower/upower_debug`), and disarming `upower_update_volt_by_eem` to protect calibrated power models from eFuse overwrite.
+5. **Calibrated EAS Energy Model (`Upower.ko`, v2.2 Profile)**: Reverse-engineered MediaTek Unified Power (`Upower.ko`), scaling static dynamic power curves by CMOS voltage scaling (P proportional to V^2), scaling 200 MHz floor idle power down ~60% (17,036 uW -> 7,083 uW), calibrating EAS migration `turn_point` to OPP 2 (500 MHz) reflecting the 200 MHz Big core underclock floor (confirmed via `/proc/upower/upower_debug`), and disarming `upower_update_volt_by_eem` to protect calibrated power models from eFuse overwrite.
 6. **PPM Policy Arbitration & Dynamic PowerHAL Tuning (v2.4 Profile)**: Resolved aggressive touch-boost battery drain via an autonomous native AArch64 JSON patcher (`patch_powerhint`) running at early `post-fs-data`. Dynamically reads the installed ROM's `/vendor/etc/powerhint.json` to eliminate Mali-G57 GPU level 0 (1068 MHz) spiking and Cortex-A76 Big core 1.44 GHz clamps while preserving 100% of ROM maintainer custom hints across updates. Re-tuned Little cluster interaction boost to 100 ms @ 703 MHz (-50.00 mV @ 637.50 mV, 24.8 mW dynamic power), aligned Cobra multi-cluster power budgets (293 mW floor to 2479 mW peak), and integrated `PPM_POLICY_LCM_OFF` (Policy 8) locking Little cores to the 200 MHz floor during screen-off sleep.
 7. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.4.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU, GPU, and Upower modules, complete with automated stock backup and uninstall restoration.
 8. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
 9. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
-10. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula $V_{\text{sram}} = \max(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV})$, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
+10. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula `Vsram = max(750.00 mV, Vproc + 100.00 mV)`, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
 
 ---
 
@@ -79,17 +79,21 @@ Each cluster table allocates 16 slots (256 bytes) for Cluster 0 (Little CPU), 16
 ### 2.3 Unlocking the 200 MHz PLL Floor
 MediaTek locks the minimum frequency to 500 MHz on Little cores and 725 MHz on Big cores. Modifying only `freq_mhz` causes immediate hard PLL unlock lockups unless the internal Voltage-Controlled Oscillator (VCO) frequency constraint is met:
 
-$$f_{\text{VCO}} = f_{\text{target}} \times a \times b$$
+$$
+f_{\text{VCO}} = f_{\text{target}} \times a \times b
+$$
 
-The MT6833 on-chip PLL specification mandates that $f_{\text{VCO}}$ must remain within the stable lock boundary:
+The MT6833 on-chip PLL specification mandates that `f_VCO` must remain within the stable lock boundary:
 
-$$1500\text{ MHz} \le f_{\text{VCO}} \le 3500\text{ MHz}$$
+$$
+1500\text{ MHz} \le f_{\text{VCO}} \le 3500\text{ MHz}
+$$
 
-* At stock 500 MHz: $a = 4, b = 1 \implies f_{\text{VCO}} = 500 \times 4 \times 1 = 2000\text{ MHz}$ (Valid).
-* Attempting 200 MHz with stock factors ($a=4, b=1$) yields $f_{\text{VCO}} = 800\text{ MHz}$, which drops below 1500 MHz and triggers an immediate PLL failure / kernel freeze.
-* **The Solution**: Setting post-dividers to $a = 4, b = 2$:
-  $$f_{\text{VCO}} = 200 \times 4 \times 2 = 1600\text{ MHz}$$
-  This safely lands inside the $1500\text{--}3500\text{ MHz}$ lock window, allowing both Little (A55) and Big (A76) cores to downclock to 200 MHz with complete clock phase stability.
+* At stock 500 MHz: `a = 4, b = 1` -> `f_VCO = 500 x 4 x 1 = 2000 MHz` (Valid).
+* Attempting 200 MHz with stock factors (`a = 4, b = 1`) yields `f_VCO = 800 MHz`, which drops below 1500 MHz and triggers an immediate PLL failure / kernel freeze.
+* **The Solution**: Setting post-dividers to `a = 4, b = 2`:
+  - `f_VCO = 200 x 4 x 2 = 1600 MHz` (Valid).
+  This safely lands inside the 1500–3500 MHz lock window, allowing both Little (A55) and Big (A76) cores to downclock to 200 MHz with complete clock phase stability.
 
 ---
 
@@ -168,14 +172,16 @@ In the MT6833 architecture, the CPU cluster features dedicated Level 1, Level 2,
 #### The MCUPM Shared Memory Channel & Hardware Rule
 By sweeping operating frequencies from 200 MHz to 2400 MHz on live hardware while polling physical PMIC telemetry, we uncovered the exact mathematical rule enforced by MCUPM firmware:
 
-$$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)$$
+$$
+V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)
+$$
 
 * **Active High Load (2.4 GHz Big Core)**:
-  $$V_{\text{proc2}} = 812.50\text{ mV} \implies V_{\text{sram2}} = 912.50\text{ mV} \quad (\Delta = +100.00\text{ mV})$$
-* **Idle / Low Load ($\le 1400\text{ MHz}$)**:
-  Even when core logic drops to 581.25 mV (at 200 MHz), $V_{\text{sram}}$ clamps cleanly to **750.00 mV**.
+  `Vproc2 = 812.50 mV` commands `Vsram2 = 912.50 mV` (Delta = +100.00 mV).
+* **Idle / Low Load (<= 1400 MHz)**:
+  Even when core logic drops to 581.25 mV (at 200 MHz), `Vsram` clamps cleanly to **750.00 mV**.
 * **Why the 750.00 mV Floor Exists**:
-  On TSMC's 6nm FinFET process, 6-transistor (6T) SRAM bitcells require a strict minimum retention voltage ($V_{\text{min}}$). Violating this threshold induces spontaneous bit-flips and silent memory corruption during CPU idle or Wait-For-Interrupt (WFI) states. The MCUPM hardware clamp guarantees that aggressive core undervolts will never compromise cache retention integrity.
+  On TSMC's 6nm FinFET process, 6-transistor (6T) SRAM bitcells require a strict minimum retention voltage (`Vmin`). Violating this threshold induces spontaneous bit-flips and silent memory corruption during CPU idle or Wait-For-Interrupt (WFI) states. The MCUPM hardware clamp guarantees that aggressive core undervolts will never compromise cache retention integrity.
 
 ---
 
@@ -185,11 +191,12 @@ Whenever the device enters 120Hz display refresh mode, `dispsys_config` requests
 Modifying the voltage lookup table `mt6853_voltages` causes the Linux regulator core to return `-EINVAL` to consumer drivers, crashing the display.
 
 #### The Mathematical 1-Instruction Clamp (`min(w, 2)`)
-For inputs $w \in \{0, 1, 2, 3\}$, the exact function $\min(w, 2)$ maps:
-$$0 \to 0,\quad 1 \to 1,\quad 2 \to 2,\quad 3 \to 2$$
+For inputs `w in {0, 1, 2, 3}`, the function maps: `0 -> 0, 1 -> 1, 2 -> 2, 3 -> 2`.
 
 In bitwise arithmetic:
-$$\text{result} = w \ \& \ \sim(w \gg 1)$$
+```c
+result = w & ~(w >> 1)
+```
 
 In ARM64 machine code, this executes as a single instruction:
 ```aarch64
@@ -223,7 +230,7 @@ The driver transparently accepts 725,000 uV requests without error while clampin
 
 #### The Calibration Solution
 * **Static Tables Calibrated**: Scaled nominal voltages to match the -50.00 mV undervolt and 200 MHz underclock across Little, Big, CCI, and cluster tables.
-* **Physical Power Scaling**: Recalculated dynamic power entries via $P_{\text{dyn, new}} = P_{\text{dyn, stock}} \times (V_{\text{patched}} / V_{\text{stock}})^2$.
+* **Physical Power Scaling**: Recalculated dynamic power entries via `P_dyn_new = P_dyn_stock * (V_patched / V_stock)^2`.
 * **200 MHz Floor Scaled**: Scaled 200 MHz OPP 0 dynamic power down to 7,083 uW (~60% lower idle power).
 * **Migration Turn Point Calibrated**: Aligned `turn_point` with the 200 MHz Big core floor (`turn_point = 2` / 500 MHz on live hardware in `/proc/upower/upower_debug`), accurately modeling the ~63% dynamic power reduction of Cortex-A76 at 200 MHz (32.9 mW vs 88.9 mW stock) for optimal EAS energy arbitration.
 * **EEM Overwrite Disarmed & Relocations Neutralized**: Stubbed `upower_update_volt_by_eem` (`0x1b1c`) and `upower_update_tables_by_eem` (`0x1d14`) with a compact 12-byte PAC/BTI return stub (`3f 23 03 d5 bf 23 03 d5 c0 03 5f d6`), terminating prior to the `0x0b28` relocation boundary. Simultaneously neutralized all 35 internal ELF relocations to `R_AARCH64_NONE` to eliminate module loader relocation overwrites and guarantee 100% boot stability.
@@ -235,14 +242,19 @@ The driver transparently accepts 725,000 uV requests without error while clampin
 ### 3.1 Voltage Step Calculation (MT6359 PMIC)
 The MT6359 PMIC uses linear voltage encoding:
 
-$$\text{Voltage (mV)} = \text{Step} \times 6.25 + 400.0$$
-$$\text{Voltage (uV)} = (\text{Step} \times 6.25 + 400.0) \times 1000$$
+$$
+\text{Voltage (mV)} = \text{Step} \times 6.25 + 400.0
+$$
 
-* Step `0`: $400.00\text{ mV}$ (Power-gate sleep state)
-* Step `24` (`0x18`): $550.00\text{ mV}$ (Absolute hardware regulator floor)
-* Step `29` (`0x1d`): $581.25\text{ mV}$ (v1.8 Patched 200 MHz idle floor)
-* Step `88` (`0x58`): $950.00\text{ mV}$ (v1.8 Patched 2.0 GHz Little max, -50.00 mV)
-* Step `96` (`0x60`): $1000.00\text{ mV}$ (v1.8 Patched 2.4 GHz Big max, -50.00 mV)
+$$
+\text{Voltage (uV)} = (\text{Step} \times 6.25 + 400.0) \times 1000
+$$
+
+* Step `0`: 400.00 mV (Power-gate sleep state)
+* Step `24` (`0x18`): 550.00 mV (Absolute hardware regulator floor)
+* Step `29` (`0x1d`): 581.25 mV (v1.8 Patched 200 MHz idle floor)
+* Step `88` (`0x58`): 950.00 mV (v1.8 Patched 2.0 GHz Little max, -50.00 mV)
+* Step `96` (`0x60`): 1000.00 mV (v1.8 Patched 2.4 GHz Big max, -50.00 mV)
 
 ---
 
@@ -313,7 +325,9 @@ struct gpu_opp_entry {
 #### Hardware Voltage Delta Constraint
 The MT6833 silicon layout mandates that the voltage difference between GPU SRAM (`vsram_md`) and GPU Core (`vproc1`) must never exceed 200 mV:
 
-$$\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$$
+$$
+\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}
+$$
 
 | OPP Index | Frequency | Stock Vgpu | Patched Vgpu | Stock Vsram | Patched Vsram | Hardware Delta |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -538,7 +552,7 @@ This research directly applies to other SoCs sharing the MediaTek MT6833 silicon
 ### Verification Checklist for Porting:
 1. Verify the MT6359 linear step formula matches your PMIC variant.
 2. Locate the `.rodata` offset for `MT6833_B24GTbl` or equivalent board configuration tables using Ghidra string search for cluster names.
-3. Validate that $f_{\text{VCO}} = f_{\text{target}} \times a \times b$ falls within your SoC's PLL operating range before modifying dividers.
+3. Validate that `f_VCO = f_target x a x b` falls within your SoC's PLL operating range before modifying dividers.
 4. Verify whether `mediatek_eem.ko` is enabled in your vendor kernel. If present, apply the zero-return patch to `mt_cpufreq_update_legacy_volt`.
 5. Check your specific Device Tree regulator bindings (`/sys/firmware/devicetree/base/mt_cpufreq`) to trace physical PMIC rail routing before reading sysfs microvolt entries.
 6. Check `mtk-dvfsrc-regulator.ko` and `mtk-dvfsrc.ko` to apply the `bic Rd, Rn, Rn, lsr #1` clamp if high refresh rate displays command high Vcore levels.

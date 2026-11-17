@@ -23,12 +23,16 @@ struct opp_desc {
 };
 ```
 * **PLL VCO Frequency Equation**:
-  $$f_{\text{VCO}} = f_{\text{target}} \times a \times b$$
-  For MT6833 PLL stability, $f_{\text{VCO}}$ must fall within $1500\text{ MHz} \le f_{\text{VCO}} \le 3500\text{ MHz}$.
-  - For $200\text{ MHz}$: $a = 4, b = 2 \implies f_{\text{VCO}} = 200 \times 4 \times 2 = 1600\text{ MHz}$ (Stable).
+
+$$
+f_{\text{VCO}} = f_{\text{target}} \times a \times b
+$$
+
+For MT6833 PLL stability, `f_VCO` must fall within `1500 MHz <= f_VCO <= 3500 MHz`.
+- For 200 MHz: `a = 4, b = 2` -> `f_VCO = 200 x 4 x 2 = 1600 MHz` (Stable).
 
 ### Table Offsets in `CPU_DVFS.ko`
-* `MT6833_B24GTbl`: `0xd7f8` (768 bytes = 16 entries $\times$ 3 clusters)
+* `MT6833_B24GTbl`: `0xd7f8` (768 bytes = 16 entries x 3 clusters)
 * `MT6833_B20GTbl`: `0xd4f8` (768 bytes)
 * `FY_6833Tbl`: `0xd1f8` (768 bytes)
 * `opp_tbl_*` fallback tables: `0xc610`, `0xc690`, `0xc710`, `0xc790`, `0xc810`, `0xc890`, `0xc910`, `0xc990`, `0xca10`
@@ -66,8 +70,8 @@ struct gpu_opp_entry {
 };
 ```
 * 45 Total Operating Points (from 1068 MHz down to 390 MHz).
-* Voltage values are stored in 10 uV units ($80000 \times 10\text{ uV} = 800000\text{ uV} = 800.00\text{ mV}$).
-* **Hardware Limit**: $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$. Clamped at lower frequencies to prevent MT6359 over-differential shutdown.
+* Voltage values are stored in 10 uV units (80000 x 10 uV = 800,000 uV = 800.00 mV).
+* **Hardware Limit**: `Delta(Vsram - Vgpu) <= 200.00 mV`. Clamped at lower frequencies to prevent MT6359 over-differential shutdown.
 
 ---
 
@@ -118,10 +122,12 @@ Disassembly in Ghidra identified two distinct voltage step converters:
 ### The Hardware Tracking Formula & Retention Floor
 Telemetry readings under live frequency sweeping proved the exact formula enforced by MCUPM hardware:
 
-$$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)$$
+$$
+V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)
+$$
 
-* **Load Tracking**: High OPPs maintain $V_{\text{sram}} = V_{\text{proc}} + 100.00\text{ mV}$.
-* **750.00 mV Silicon Clamp**: Prevents 6T SRAM bitcell retention failures ($V_{\text{min}}$) during low-frequency and idle operation.
+* **Load Tracking**: High OPPs maintain `Vsram = Vproc + 100.00 mV`.
+* **750.00 mV Silicon Clamp**: Prevents 6T SRAM bitcell retention failures (`Vmin`) during low-frequency and idle operation.
 
 ---
 
@@ -155,7 +161,7 @@ At file offset `0x127c`, the stock instruction prepares argument 3 (`w2`) from `
 mov w2, w21        // 2a 15 03 e2
 ```
 
-We patch this single instruction to clamp the selector to a maximum of 2 using the bitwise formula $\min(w, 2) = w \ \& \ \sim(w \gg 1)$:
+We patch this single instruction to clamp the selector to a maximum of 2 using the bitwise formula `min(w, 2) = w & ~(w >> 1)`:
 ```aarch64
 // Patched:
 bic w2, w21, w21, lsr #1   // a2 06 75 0a (Little-Endian: 0a 75 06 a2)
@@ -213,13 +219,16 @@ At file offset `0xeb90`, each entry has `vcore_level` at offset `+0x04`:
 
 ### 5.4 Verification of Mathematical Equivalence
 The 1-instruction clamp `bic Rd, Rn, Rn, lsr #1` computes:
-$$\text{result} = R_n \ \& \ \sim(R_n \gg 1)$$
+
+```c
+result = Rn & ~(Rn >> 1)
+```
 
 For all 2-bit unsigned inputs:
-* $R_n = 0$ (`0b00`): $0 \ \& \ \sim(0) = 0$ (Level 0 / 550.00 mV)
-* $R_n = 1$ (`0b01`): $1 \ \& \ \sim(0) = 1$ (Level 1 / 600.00 mV)
-* $R_n = 2$ (`0b10`): $2 \ \& \ \sim(1) = 2$ (Level 2 / 650.00 mV)
-* $R_n = 3$ (`0b11`): $3 \ \& \ \sim(1) = 2$ (Level 3 clamped to Level 2 / 650.00 mV)
+* `Rn = 0` (`0b00`): `0 & ~0 = 0` (Level 0 / 550.00 mV)
+* `Rn = 1` (`0b01`): `1 & ~0 = 1` (Level 1 / 600.00 mV)
+* `Rn = 2` (`0b10`): `2 & ~1 = 2` (Level 2 / 650.00 mV)
+* `Rn = 3` (`0b11`): `3 & ~1 = 2` (Level 3 clamped to Level 2 / 650.00 mV)
 
 This achieves exact mathematical capping in a single 4-byte instruction without modifying branch predictors, condition flags, or requiring trampoline hooks.
 
@@ -245,7 +254,7 @@ struct upower_opp_entry {
 };
 ```
 
-Following the 16 OPP entries ($16 \times 48 = 768 = \text{0x300}$ bytes), each table includes metadata tail fields ($120\text{ bytes} = \text{0x78}$):
+Following the 16 OPP entries (16 x 48 = 768 = 0x300 bytes), each table includes metadata tail fields (120 bytes = 0x78):
 * `+0x300`: `col_num` (Cluster core count / columns, default: 4)
 * `+0x304`: `row_num` (OPP count, default: 16)
 * `+0x308`: `min_eff` (Minimum cluster efficiency across OPPs)
@@ -295,7 +304,10 @@ The module contains static definitions for 3 hardware CPU bin revisions (`FY`, `
 0x270: str  w13, [x12, #0xc]      // Store updated dyn_power
 ```
 This confirms physical dynamic power scaling:
-$$P_{\text{dyn}} = P_{\text{dyn, ref}} \times \frac{V_{\text{curr}}^2}{V_{\text{ref}}^2}$$
+
+$$
+P_{\text{dyn}} = P_{\text{dyn, ref}} \times \frac{V_{\text{curr}}^2}{V_{\text{ref}}^2}
+$$
 
 #### 2. Efficiency Calculation & Turn Point (`upower_update_tables_by_eem` at `.text + 0x0d14`, File Offset: `0x1d14`)
 ```aarch64
@@ -331,7 +343,11 @@ $$P_{\text{dyn}} = P_{\text{dyn, ref}} \times \frac{V_{\text{curr}}^2}{V_{\text{
 0x95c: autiasp
 0x960: ret
 ```
-The routine scans Little cluster OPPs top-down ($15 \to 0$), selecting the first OPP whose efficiency satisfies $\text{eff}_{\text{Little}} \le \text{eff}_{\text{Big, min}}$.
+The routine scans Little cluster OPPs top-down (15 -> 0), selecting the first OPP whose efficiency satisfies:
+
+$$
+\text{eff}(\text{Little}) \le \text{eff}(\text{Big, min})
+$$
 
 #### 4. EEM Overwrite Disarm & The ELF Relocation Collision Hazard
 

@@ -72,10 +72,15 @@ Each CPU cluster on the MT6833 incorporates separate power domains for core logi
    * L2/L3 Cache SRAM: `ldo_vsram_proc2` (regulator.23, low-noise LDO).
 
 ### MCUPM Hardware Co-Regulation
-The MCUPM coprocessor automatically correlates $V_{\text{sram}}$ with $V_{\text{proc}}$:
-* As $V_{\text{proc}}$ scales dynamically between OPPs, $V_{\text{sram}}$ follows via the hardware transfer function $V_{\text{sram}} = \max(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV})$.
-* Under heavy 2.4 GHz load: $V_{\text{proc2}} = 812.50\text{ mV} \implies V_{\text{sram2}} = 912.50\text{ mV}$.
-* When idle or downclocked to 200 MHz: $V_{\text{proc}} = 581.25\text{ mV}$, but $V_{\text{sram}}$ stays clamped at $750.00\text{ mV}$ to prevent 6T SRAM bitcell state degradation.
+The MCUPM coprocessor automatically correlates `Vsram` with `Vproc`:
+
+$$
+V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)
+$$
+
+* As core logic voltage scales dynamically between OPPs, cache SRAM tracks with a +100.00 mV offset.
+* Under heavy 2.4 GHz load: `Vproc2 = 812.50 mV` commands `Vsram2 = 912.50 mV`.
+* When idle or downclocked to 200 MHz: `Vproc = 581.25 mV`, but `Vsram` stays clamped at **750.00 mV** to prevent 6T SRAM bitcell state degradation.
 
 ---
 
@@ -107,15 +112,18 @@ Whenever a 120Hz display mode is active:
 4. `dvfsrc_set_voltage_sel()` invokes `mtk_dvfsrc_send_request(dvfsrc, cmd=2, selector=3)`.
 5. Inside `mtk-dvfsrc.ko`, command 2 triggers `mt6873_set_vcore_level(dvfsrc, level=3)`.
 6. `mt6873_set_vcore_level()` calculates `(level << 4)` and writes `0x30` into hardware register `SW_REQ 3` (`0x1000600c`).
-7. SPM hardware senses `SW_REQ 3 = 0x30` and transmits a command to MT6359 PMIC register `0x152c`, setting selector `0x23` (35), commanding the physical buck regulator to **725.00 mV** ($506.25\text{ mV} + 35 \times 6.25\text{ mV} = 725.00\text{ mV}$).
+7. SPM hardware senses `SW_REQ 3 = 0x30` and transmits a command to MT6359 PMIC register `0x152c`, setting selector `0x23` (35), commanding the physical buck regulator to **725.00 mV** (506.25 mV + 35 x 6.25 mV = 725.00 mV).
 
 ### 5.3 The Solution: Mathematical 1-Instruction Clamp (`min(w, 2)`)
 Simply modifying the `mt6853_voltages` table in `mtk-dvfsrc-regulator.ko` breaks driver compatibility: when consumers request `725000 uV`, the regulator core returns `-EINVAL` because the voltage no longer exists in the array, breaking display initialization.
 
-Instead, we leave the regulator array intact and clamp the selector parameter in the execution path using the mathematical property:
-$$\min(w, 2) = w \ \& \ \sim(w \gg 1) \quad \text{for } w \in \{0, 1, 2, 3\}$$
+Instead, we leave the regulator array intact and clamp the selector parameter in the execution path using the bitwise formula:
 
-| Input Selector ($w$) | Binary ($w$) | $w \gg 1$ | $\sim(w \gg 1)$ | $w \ \& \ \sim(w \gg 1)$ | Output Level | Target Voltage |
+```c
+min(w, 2) = w & ~(w >> 1)   // for w in {0, 1, 2, 3}
+```
+
+| Input Selector (`w`) | Binary (`w`) | `w >> 1` | `~(w >> 1)` | `w & ~(w >> 1)` | Output Level | Target Voltage |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | 0 | `00` | `0` | `1` | `00 & 01 = 00` | 0 | 550.00 mV |
 | 1 | `01` | `0` | `1` | `01 & 01 = 01` | 1 | 600.00 mV |
@@ -130,7 +138,7 @@ In ARM64 Bit Clear (`BIC Rd, Rn, Rn, LSR #1`):
 This guarantees that:
 1. Consumer drivers (such as 120Hz display) continue requesting 725,000 uV successfully without error.
 2. The DVFSRC driver silently and atomically clamps the hardware actuation to Level 2 (650.00 mV).
-3. The physical PMIC register `0x152c` never exceeds selector `0x17` ($506.25 + 23 \times 6.25 = 650.00\text{ mV}$), achieving an autonomous **-75.00 mV Vcore undervolt**.
+3. The physical PMIC register `0x152c` never exceeds selector `0x17` (506.25 mV + 23 x 6.25 mV = 650.00 mV), achieving an autonomous **-75.00 mV Vcore undervolt**.
 
 ### 5.4 Bare-Metal Partition Patching Architecture
 The DVFSRC drivers (`mtk-dvfsrc.ko`, `mtk-dvfsrc-regulator.ko`, and `mtk-dvfsrc-helper.ko`) reside inside the early boot ramdisk within the `vendor_boot` partition. Because they probe before root file systems or post-fs overlays are mounted, standard KernelSU module overlay mounts cannot intercept them.
@@ -153,10 +161,10 @@ The Linux Energy Aware Scheduling (EAS) framework and MediaTek Power Policy Mana
 2. **MediaTek PPM (`mtk_ppm_v3.ko`)**: Calls `upower_get_power()` during `ppm_calc_total_power()` and `ppm_cobra_init()` to dynamically enforce thermal envelopes and Cobra cluster power budgets.
 
 In the uncalibrated stock system, `Upower.ko` creates an energy disconnect:
-* `Upower.ko` contains static lookup tables (`upower_tbl_l_*`, `upower_tbl_b_*`, `upower_tbl_cci_*`) hardcoded with stock nominal voltages ($1000.00\text{ mV}$ Little OPP 15, $1050.00\text{ mV}$ Big OPP 15, $650.00\text{ mV}$ floor).
+* `Upower.ko` contains static lookup tables (`upower_tbl_l_*`, `upower_tbl_b_*`, `upower_tbl_cci_*`) hardcoded with stock nominal voltages (1000.00 mV Little OPP 15, 1050.00 mV Big OPP 15, 650.00 mV floor).
 * Shortly after boot, `mediatek_eem.ko` invokes `upower_update_volt_by_eem()`, overwriting the tables with stock factory eFuse voltages.
-* Schedutil and PPM evaluate power efficiency based on stock power curves ($10\%\text{--}20\%$ higher than our real physical power consumption).
-* Schedutil computes `turn_point = 7` ($1048\text{ MHz}$), prematurely migrating lightweight background tasks to the power-hungry Cortex-A76 Big cluster.
+* Schedutil and PPM evaluate power efficiency based on stock power curves (10% to 20% higher than our real physical power consumption).
+* Schedutil computes `turn_point = 7` (1048 MHz), prematurely migrating lightweight background tasks to the power-hungry Cortex-A76 Big cluster.
 
 ### 6.2 Upower Calibration Architecture
 We patch `Upower.ko` across four key dimensions:
@@ -187,9 +195,12 @@ We patch `Upower.ko` across four key dimensions:
 
 ### 6.3 Scheduler Turn Point & Efficiency Impact
 Inside `Upower.ko`, `get_L_pwr_efficiency()`, `get_LL_pwr_efficiency()`, and `upower_cal_turn_point()` compute task migration thresholds:
-$$\text{Efficiency} = \frac{P_{\text{total}}}{\text{Capacity}} = \frac{P_{\text{dyn}} + P_{\text{lkg}}}{\text{Capacity}}$$
 
-In `upower_cal_turn_point()`, the kernel compares Little cluster efficiency against the Big cluster's minimum efficiency point ($\text{eff}_{\text{Big, min}}$), scanning Little OPPs from index 15 down to 0:
+$$
+\text{Efficiency} = \frac{P_{\text{total}}}{\text{Capacity}} = \frac{P_{\text{dyn}} + P_{\text{lkg}}}{\text{Capacity}}
+$$
+
+In `upower_cal_turn_point()`, the kernel compares Little cluster efficiency against the Big cluster minimum efficiency floor (`min_eff`), scanning Little OPPs from index 15 down to 0:
 ```c
 min_eff = get_L_min_efficiency(); // Minimum efficiency across Big cluster OPPs
 for (i = 15; i >= 0; i--) {
@@ -201,21 +212,22 @@ for (i = 15; i >= 0; i--) {
 ```
 
 * **Stock Turn Point Evaluation**:
-  - Stock lowest Big OPP was 500 MHz ($P_{\text{dyn}} = 88,853\ \mu\text{W}$, $P_{\text{lkg0}} = 103,988\ \mu\text{W}$, $\text{cap} = 611$): $\text{eff}_{\min} = \frac{88853 + 103988}{611} = 315$.
-  - Little OPP 6 ($1048\text{ MHz}$): $\text{eff} = 311 \le 315$.
-  - Little OPP 7 ($1128\text{ MHz}$): $\text{eff} = 321 > 315$.
-  - Result: `turn_point` $= 6 + 1 = 7$ ($1048\text{ MHz}$).
+  - Stock lowest Big OPP was 500 MHz (P_dyn = 88,853 uW, P_lkg0 = 103,988 uW, cap = 611):
+    - `eff = (88853 + 103988) / 611 = 315`
+  - Little OPP 6 (1048 MHz): `eff = 311 <= 315`
+  - Little OPP 7 (1128 MHz): `eff = 321 > 315`
+  - Result: `turn_point = 6 + 1 = 7` (1048 MHz).
 
 * **Calibrated Undervolt & 200 MHz Underclock Floor Evaluation**:
-  - Unlocking the 200 MHz underclock floor on Big cores reduces Big OPP 0 dynamic power by **-62.9%** (down to $32,928\ \mu\text{W}$ @ 581.25 mV).
+  - Unlocking the 200 MHz underclock floor on Big cores reduces Big OPP 0 dynamic power by **-62.9%** (down to 32,928 uW @ 581.25 mV).
   - Under live operating conditions with thermal leakage scaling (Leakage Index 4 in `/proc/upower/upower_debug`):
-    - Big OPP 0 ($200\text{ MHz}$): $P_{\text{dyn}} = 32,928\ \mu\text{W}$, $P_{\text{lkg}} = 175,000\ \mu\text{W}$, $\text{cap} = 611 \implies \text{eff} = \frac{32928 + 175000}{611} = 340$.
-    - Big OPP 1 ($500\text{ MHz}$): $P_{\text{dyn}} = 85,900\ \mu\text{W}$, $P_{\text{lkg}} = 175,000\ \mu\text{W}$, $\text{cap} = 667 \implies \text{eff} = \frac{85900 + 175000}{667} = 391$.
-    - Big cluster minimum efficiency shifts to $\text{eff}_{\min} = 340$ at the 200 MHz floor *(or $\text{eff}_{\min} = 224$ in static tables without runtime thermal leakage updates)*.
-  - Evaluating Little cluster OPPs top-down ($15 \to 0$):
-    - Little OPP 2 ($703\text{ MHz}$): $P_{\text{dyn}} = 22,145\ \mu\text{W}$, $P_{\text{lkg}} = 46,000\ \mu\text{W}$, $\text{cap} = 193 \implies \text{eff} = 353 > 340$.
-    - Little OPP 1 ($500\text{ MHz}$): $P_{\text{dyn}} = 18,479\ \mu\text{W}$, $P_{\text{lkg}} = 43,000\ \mu\text{W}$, $\text{cap} = 181 \implies \text{eff} = 339 \le 340$ (Match).
-    - Result: `turn_point` $= 1 + 1 = 2$ ($500\text{ MHz}$).
+    - Big OPP 0 (200 MHz): P_dyn = 32,928 uW, P_lkg = 175,000 uW, cap = 611 -> `eff = (32928 + 175000) / 611 = 340`.
+    - Big OPP 1 (500 MHz): P_dyn = 85,900 uW, P_lkg = 175,000 uW, cap = 667 -> `eff = (85900 + 175000) / 667 = 391`.
+    - Big cluster minimum efficiency shifts to `eff = 340` at the 200 MHz floor (or `eff = 224` in static tables without runtime thermal leakage updates).
+  - Evaluating Little cluster OPPs top-down (15 -> 0):
+    - Little OPP 2 (703 MHz): P_dyn = 22,145 uW, P_lkg = 46,000 uW, cap = 193 -> `eff = 353 > 340`.
+    - Little OPP 1 (500 MHz): P_dyn = 18,479 uW, P_lkg = 43,000 uW, cap = 181 -> `eff = 339 <= 340` (Match).
+    - Result: `turn_point = 1 + 1 = 2` (500 MHz).
 
 * **Verified Hardware Confirmation**:
   Live hardware reading via `/proc/upower/upower_debug`:
@@ -252,26 +264,25 @@ PPM maintains an internal priority hierarchy exposed through `/proc/ppm/dump_pol
 #### Arbitration Engine (`mt_ppm_main`)
 Every cycle or policy update, `mt_ppm_main()` evaluates all active and enabled policies:
 1. **OPP Index Bounds**: For each cluster, policies submit `(min_freq_idx, max_freq_idx, min_core_num, max_core_num)`. Note that in MediaTek convention, OPP index `0` represents the maximum frequency (highest clock speed) while index `15` represents the floor (200 MHz).
-2. **Aggregated Final Limit**: PPM takes the union of constraints:
-   $$\text{Final}_{\min} = \min_{k}(\text{policy}_{k,\min})$$
-   $$\text{Final}_{\max} = \max_{k}(\text{policy}_{k,\max})$$
-   Taking the minimum index for $\text{Final}_{\min}$ (`min_freq_idx`) enforces the highest lower-bound clock, while taking the maximum index for $\text{Final}_{\max}$ (`max_freq_idx`) enforces the lowest upper-bound ceiling.
+2. **Aggregated Final Limit**: PPM takes the union of constraints across all active policies:
+   - `Final min_freq_idx = min(policy[k].min_freq_idx)`: Taking the minimum OPP index enforces the highest lower-bound clock speed (OPP 0 represents maximum frequency).
+   - `Final max_freq_idx = max(policy[k].max_freq_idx)`: Taking the maximum OPP index enforces the lowest upper-bound clock ceiling (OPP 15 represents the 200 MHz floor).
 3. **Cpufreq QoS Synchronization**: PPM looks up the frequency corresponding to `Final max_idx` and `Final min_idx` in the cluster DVFS tables via `ppm_main_freq_to_idx()` and calls:
    - `freq_qos_update_request(&cluster->qos_min, min_freq_khz)`
    - `freq_qos_update_request(&cluster->qos_max, max_freq_khz)`
 4. **Sysfs Node Interface**: The nodes `/proc/ppm/policy/hard_userlimit_cpu_freq`, `userlimit_cpu_freq`, `hard_userlimit_max_cpu_freq`, and `hard_userlimit_min_cpu_freq` accept frequency values in **kHz** (e.g. `200000 2000000 200000 2400000`), automatically converted to internal OPP table indices by `ppm_main_freq_to_idx()`. Passing `-1` clears constraints to an unconstrained state.
 
 ### 7.2 MediaTek Cobra Power Matrix (`cobra_budget_to_limit` & `cobra_limit_to_budget`)
-MediaTek's Cobra algorithm arbitrates multi-cluster power envelopes using calibrated power tables derived directly from [Upower.ko](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md). Cobra models all 256 cluster Operating Performance Point combinations $(6, \text{OPP}_L, 2, \text{OPP}_B)$ spanning 16 Little OPPs and 16 Big OPPs:
+MediaTek's Cobra algorithm arbitrates multi-cluster power envelopes using calibrated power tables derived directly from [Upower.ko](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md). Cobra models all 256 cluster Operating Performance Point combinations `(6, OPP_L, 2, OPP_B)` spanning 16 Little OPPs and 16 Big OPPs:
 
 * **Maximum Power Budget**:
-  - Configuration: $(6, 0, 2, 0) = 6 \text{ cores @ } 2000\text{ MHz} + 2 \text{ cores @ } 2400\text{ MHz}$.
-  - Total Power: $2,479\text{ mW}$ (down from stock $2,800+\text{ mW}$ due to calibrated -50.00 mV undervolt).
+  - Configuration: `(6, 0, 2, 0)` = 6 cores @ 2000 MHz + 2 cores @ 2400 MHz.
+  - Total Power: 2,479 mW (down from stock 2,800+ mW due to calibrated -50.00 mV undervolt).
 * **Deep Idle Floor Budget**:
-  - Configuration: $(6, 15, 2, 15) = 6 \text{ cores @ } 200\text{ MHz} + 2 \text{ cores @ } 200\text{ MHz}$.
-  - Total Power: $293\text{ mW}$ (reflecting the 200 MHz underclock floor and dynamic power reduction).
+  - Configuration: `(6, 15, 2, 15)` = 6 cores @ 200 MHz + 2 cores @ 200 MHz.
+  - Total Power: 293 mW (reflecting the 200 MHz underclock floor and dynamic power reduction).
 * **Multi-Cluster Budget Allocation**:
-  Writing an input budget in milliwatts to `/proc/ppm/cobra_budget_to_limit` (e.g. `1000` mW) calculates optimal multi-cluster capacity splits (e.g. $(6, 2, 2, 15) = 955\text{ mW}$ or $(6, 0, 0, 0) = 930\text{ mW}$). Because our static energy model in `Upower.ko` was recalculated with CMOS $V^2$ scaling, all Cobra budget allocations align precisely with actual bare-metal silicon power consumption.
+  Writing an input budget in milliwatts to `/proc/ppm/cobra_budget_to_limit` (e.g. `1000` mW) calculates optimal multi-cluster capacity splits (e.g. `(6, 2, 2, 15)` = 955 mW or `(6, 0, 0, 0)` = 930 mW). Because our static energy model in `Upower.ko` was recalculated with CMOS voltage scaling (P proportional to V^2), all Cobra budget allocations align precisely with actual bare-metal silicon power consumption.
 
 ### 7.3 Touch Boost Deconstruction & PowerHAL Interaction Tuning
 Stock Dimensity 6080 firmware suffers from severe battery drain during everyday interactions (typing, scrolling, UI taps). Reverse-engineering revealed this drain is driven by an uncoordinated dual-layer boost system that completely overrides Energy Aware Scheduling.
@@ -290,7 +301,7 @@ When a user taps or flings the screen, stock `powerhint.json` enforces the follo
 * `TAUclampMin`: Clamped to `30` for **5000 ms** (5 seconds).
 * `FGUclampMin`: Clamped to `10` for **3000 ms** (3 seconds).
 
-Because a typical user taps or scrolls every 1 to 2 seconds while reading, chatting, or web browsing, the CPU and GPU are continuously locked into high-power states, consuming over $1.5\text{ W}$ continuously for simple 2D display updates.
+Because a typical user taps or scrolls every 1 to 2 seconds while reading, chatting, or web browsing, the CPU and GPU are continuously locked into high-power states, consuming over 1.5 W continuously for simple 2D display updates.
 
 #### Calibrated EAS-Aligned Interaction Tuning
 With EAS energy models and scheduler migration calibrated (`turn_point = 2` / 500 MHz), EAS schedutil responds within 2-4 ms to genuine thread runqueue demand. Heavy artificial boost durations are unnecessary.
@@ -298,7 +309,7 @@ With EAS energy models and scheduler migration calibrated (`turn_point = 2` / 50
 The module eliminates touch-boost battery drain through specific targets:
 1. **Eliminate Big Core Minimum Clamp**: `CPUSuperClusterMinFreq` boost is removed. UI rendering threads remain on energy-efficient Little cores. When heavy operations occur (e.g. app cold start), EAS autonomously migrates threads to Big cores when utilization crosses the 500 MHz threshold.
 2. **Eliminate GPU Boost on 2D Touch**: `GpuPwrLevel` is removed from `INTERACTION`. The Mali-G57 GPU stays at its 390 MHz idle floor and scales dynamically via GED only when SurfaceFlinger / HWUI frame composition deadlines require it.
-3. **Gentle, Short Little Cluster Bump**: `CPUEfficiencyClusterMinFreq` is tuned to `703000` (703 MHz, OPP 13) for only **100 ms**. At 703 MHz (-50 mV @ 637.50 mV), dynamic power is only $24.8\text{ mW}$ per core, eliminating frame drop latency during the initial touch event while consuming a fraction of the energy.
+3. **Gentle, Short Little Cluster Bump**: `CPUEfficiencyClusterMinFreq` is tuned to `703000` (703 MHz, OPP 13) for only **100 ms**. At 703 MHz (-50 mV @ 637.50 mV), dynamic power is only 24.8 mW per core, eliminating frame drop latency during the initial touch event while consuming a fraction of the energy.
 4. **uclamp Duration Reduction**: `TAUclampMin` and `FGUclampMin` durations are reduced from 5000 ms and 3000 ms down to **150 ms**.
 
 #### Autonomous Dynamic On-Boot Patcher (`tools/patch_powerhint`)

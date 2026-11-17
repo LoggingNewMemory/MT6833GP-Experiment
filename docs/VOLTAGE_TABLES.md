@@ -2,14 +2,20 @@
 
 ## 1. Voltage Step Formula (MT6359 PMIC)
 The MT6359 PMIC uses linear voltage encoding:
-$$\text{Voltage (mV)} = \text{Step} \times 6.25 + 400.0$$
-$$\text{Voltage (uV)} = (\text{Step} \times 6.25 + 400.0) \times 1000$$
 
-* Step `0` = $400.00\text{ mV}$
-* Step `24` (`0x18`) = $550.00\text{ mV}$ (Hardware PMIC floor)
-* Step `29` (`0x1d`) = $581.25\text{ mV}$ (v1.8 minimum underclock voltage)
-* Step `88` (`0x58`) = $950.00\text{ mV}$ (v1.8 Little OPP 0)
-* Step `96` (`0x60`) = $1000.00\text{ mV}$ (v1.8 Big OPP 0)
+$$
+\text{Voltage (mV)} = \text{Step} \times 6.25 + 400.0
+$$
+
+$$
+\text{Voltage (uV)} = (\text{Step} \times 6.25 + 400.0) \times 1000
+$$
+
+* Step `0` = 400.00 mV
+* Step `24` (`0x18`) = 550.00 mV (Hardware PMIC floor)
+* Step `29` (`0x1d`) = 581.25 mV (v1.8 minimum underclock voltage)
+* Step `88` (`0x58`) = 950.00 mV (v1.8 Little OPP 0)
+* Step `96` (`0x60`) = 1000.00 mV (v1.8 Big OPP 0)
 
 ---
 
@@ -66,18 +72,21 @@ $$\text{Voltage (uV)} = (\text{Step} \times 6.25 + 400.0) \times 1000$$
 ---
 
 ### CPU Cache SRAM Dynamic Tracking (vsram_proc1 / vsram_proc2)
-The MT6833 MCUPM coprocessor dynamically tracks CPU logic voltage ($V_{\text{proc}}$) using the hardware rule:
-$$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)$$
+The MT6833 MCUPM coprocessor dynamically tracks CPU logic voltage (`Vproc`) using the hardware rule:
 
-* At full 2.4 GHz Big load: $V_{\text{proc2}} = 812.50\text{ mV} \implies V_{\text{sram2}} = 912.50\text{ mV}$.
-* At idle / low frequency ($\le 1400\text{ MHz}$): $V_{\text{sram}}$ clamps cleanly to the **750.00 mV** hardware floor to protect 6T SRAM bitcell retention ($V_{\text{min}}$).
+$$
+V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)
+$$
+
+* At full 2.4 GHz Big load: `Vproc2 = 812.50 mV` commands `Vsram2 = 912.50 mV`.
+* At idle / low frequency (<= 1400 MHz): `Vsram` clamps cleanly to the **750.00 mV** hardware floor to protect 6T SRAM bitcell retention (`Vmin`).
 
 ---
 
 ## 3. GPU OPP Table (Mali-G57 MC2, -50.00 mV Profile)
 The GPU table consists of 45 operating points inside `g_default_gpu` in `mtk_gpufreq_mt6833.ko`.
 
-* **Hardware Limit**: $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$ (Strictly enforced by hardware).
+* **Hardware Limit**: `Delta(Vsram - Vgpu) <= 200.00 mV` (Strictly enforced by hardware).
 
 | OPP Index | Frequency | Stock Vgpu | Patched Vgpu | Stock Vsram | Patched Vsram | Delta (Vsram-Vgpu) |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -219,32 +228,32 @@ Each operating point pairs memory clock frequency (DDR) with Vcore voltage level
 ## 6. MediaTek Cobra Multi-Cluster Power Allocation Tables
 
 ### 6.1 Operational Range & Boundaries
-MediaTek Power Policy Manager (PPM) dynamically evaluates thermal and battery current constraints using the Cobra algorithm. Cobra utilizes dynamic and leakage power models from [Upower.ko](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md) across all 256 cluster combinations $(6, \text{OPP}_L, 2, \text{OPP}_B)$:
+MediaTek Power Policy Manager (PPM) dynamically evaluates thermal and battery current constraints using the Cobra algorithm. Cobra utilizes dynamic and leakage power models from [Upower.ko](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md) across all 256 cluster combinations `(6, OPP_L, 2, OPP_B)`:
 
-| State | Configuration $(N_L, \text{OPP}_L, N_B, \text{OPP}_B)$ | Little Frequency | Big Frequency | Total Power Budget | Delta vs Stock |
+| State | Configuration `(N_L, OPP_L, N_B, OPP_B)` | Little Frequency | Big Frequency | Total Power Budget | Delta vs Stock |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Absolute Floor** | $(6, 15, 2, 15)$ | 200 MHz | 200 MHz | **293 mW** | -58.8% |
-| **Little Idle Floor** | $(6, 15, 0, 0)$ | 200 MHz | Offline (0 cores) | **42 mW** | -58.4% |
-| **Big Idle Floor** | $(0, 0, 2, 15)$ | Offline (0 cores) | 200 MHz | **66 mW** | -62.9% |
-| **Sustained Thermal Ceiling** | $(6, 5, 2, 8)$ | 1500 MHz | 1418 MHz | **1230 mW** | -12.4% |
-| **Peak Full Load** | $(6, 0, 2, 0)$ | 2000 MHz | 2400 MHz | **2479 mW** | -11.5% |
+| **Absolute Floor** | `(6, 15, 2, 15)` | 200 MHz | 200 MHz | **293 mW** | -58.8% |
+| **Little Idle Floor** | `(6, 15, 0, 0)` | 200 MHz | Offline (0 cores) | **42 mW** | -58.4% |
+| **Big Idle Floor** | `(0, 0, 2, 15)` | Offline (0 cores) | 200 MHz | **66 mW** | -62.9% |
+| **Sustained Thermal Ceiling** | `(6, 5, 2, 8)` | 1500 MHz | 1418 MHz | **1230 mW** | -12.4% |
+| **Peak Full Load** | `(6, 0, 2, 0)` | 2000 MHz | 2400 MHz | **2479 mW** | -11.5% |
 
 ### 6.2 Cobra Budget Envelopes (`/proc/ppm/cobra_budget_to_limit`)
 Writing a power ceiling (in milliwatts) to `/proc/ppm/cobra_budget_to_limit` yields the optimal cluster configuration that maximizes compute throughput while remaining within the designated thermal or battery power envelope:
 
-| Target Power Budget | Allocated Configuration $(N_L, \text{OPP}_L, N_B, \text{OPP}_B)$ | Little Frequency Limit | Big Frequency Limit | Effective Power | Primary Use Case |
+| Target Power Budget | Allocated Configuration `(N_L, OPP_L, N_B, OPP_B)` | Little Frequency Limit | Big Frequency Limit | Effective Power | Primary Use Case |
 | :---: | :---: | :---: | :---: | :---: | :--- |
-| **300 mW** | $(6, 15, 2, 15)$ | 200 MHz (OPP 15) | 200 MHz (OPP 15) | 293 mW | Screen-Off Standby & Audio Playback |
-| **500 mW** | $(6, 13, 2, 15)$ | 703 MHz (OPP 13) | 200 MHz (OPP 15) | 496 mW | Background Sync & Light UI Reading |
-| **750 mW** | $(6, 8, 2, 15)$ | 1128 MHz (OPP 8) | 200 MHz (OPP 15) | 732 mW | 60 FPS 2D Social Media Browsing |
-| **1000 mW** | $(6, 2, 2, 15)$ | 1812 MHz (OPP 2) | 200 MHz (OPP 15) | 955 mW | Balanced Sustained Mobile Web |
-| **1250 mW** | $(6, 5, 2, 8)$ | 1500 MHz (OPP 5) | 1418 MHz (OPP 8) | 1230 mW | Sustained Gaming & Video Recording |
-| **1500 mW** | $(6, 0, 2, 8)$ | 2000 MHz (OPP 0) | 1418 MHz (OPP 8) | 1485 mW | Heavy Computational Multitasking |
-| **2000 mW** | $(6, 0, 2, 3)$ | 2000 MHz (OPP 0) | 2118 MHz (OPP 3) | 1980 mW | High-Framerate 3D Gaming (90 FPS) |
-| **2479 mW** | $(6, 0, 2, 0)$ | 2000 MHz (OPP 0) | 2400 MHz (OPP 0) | 2479 mW | Unconstrained Peak Synthetic Burst |
+| **300 mW** | `(6, 15, 2, 15)` | 200 MHz (OPP 15) | 200 MHz (OPP 15) | 293 mW | Screen-Off Standby & Audio Playback |
+| **500 mW** | `(6, 13, 2, 15)` | 703 MHz (OPP 13) | 200 MHz (OPP 15) | 496 mW | Background Sync & Light UI Reading |
+| **750 mW** | `(6, 8, 2, 15)` | 1128 MHz (OPP 8) | 200 MHz (OPP 15) | 732 mW | 60 FPS 2D Social Media Browsing |
+| **1000 mW** | `(6, 2, 2, 15)` | 1812 MHz (OPP 2) | 200 MHz (OPP 15) | 955 mW | Balanced Sustained Mobile Web |
+| **1250 mW** | `(6, 5, 2, 8)` | 1500 MHz (OPP 5) | 1418 MHz (OPP 8) | 1230 mW | Sustained Gaming & Video Recording |
+| **1500 mW** | `(6, 0, 2, 8)` | 2000 MHz (OPP 0) | 1418 MHz (OPP 8) | 1485 mW | Heavy Computational Multitasking |
+| **2000 mW** | `(6, 0, 2, 3)` | 2000 MHz (OPP 0) | 2118 MHz (OPP 3) | 1980 mW | High-Framerate 3D Gaming (90 FPS) |
+| **2479 mW** | `(6, 0, 2, 0)` | 2000 MHz (OPP 0) | 2400 MHz (OPP 0) | 2479 mW | Unconstrained Peak Synthetic Burst |
 
 ### 6.3 Standby & Screen-Off Policy (`PPM_POLICY_LCM_OFF`)
 When the display panel blanks (`FB_BLANK_POWERDOWN`), `PPM_POLICY_LCM_OFF` clamps the Little cluster frequency to `lcmoff_min_freq = 200000` (200 MHz). With Big cores powered off by CPU hotplug and Little cores locked to 200 MHz @ 581.25 mV:
-* Total CPU package dynamic power: $6 \times 7.083\text{ mW} = 42.5\text{ mW}$.
-* Interconnect CCI dynamic power: $7.42\text{ mW}$.
-* Total baseline standby draw: $< 60\text{ mW}$ (down from stock $150+\text{ mW}$).
+* Total CPU package dynamic power: 6 x 7.083 mW = 42.5 mW.
+* Interconnect CCI dynamic power: 7.42 mW.
+* Total baseline standby draw: < 60 mW (down from stock 150+ mW).
