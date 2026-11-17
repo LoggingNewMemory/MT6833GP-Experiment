@@ -78,7 +78,6 @@ $$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{
 The GPU table consists of 45 operating points inside `g_default_gpu` in `mtk_gpufreq_mt6833.ko`.
 
 * **Hardware Limit**: $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$ (Strictly enforced by hardware).
-* **Sample Key Steps**:
 
 | OPP Index | Frequency | Stock Vgpu | Patched Vgpu | Stock Vsram | Patched Vsram | Delta (Vsram-Vgpu) |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -86,11 +85,56 @@ The GPU table consists of 45 operating points inside `g_default_gpu` in `mtk_gpu
 | 1 | 1059 MHz | 843.75 mV | **793.75 mV** | 843.75 mV | **793.75 mV** | 0.00 mV |
 | 5 | 1025 MHz | 818.75 mV | **768.75 mV** | 818.75 mV | **768.75 mV** | 0.00 mV |
 | 10 | 970 MHz | 787.50 mV | **737.50 mV** | 787.50 mV | **750.00 mV** | 12.50 mV |
+| 15 | 895 MHz | 756.25 mV | **706.25 mV** | 750.00 mV | **750.00 mV** | 43.75 mV |
 | 20 | 835 MHz | 725.00 mV | **675.00 mV** | 750.00 mV | **750.00 mV** | 75.00 mV |
+| 25 | 778 MHz | 693.75 mV | **643.75 mV** | 750.00 mV | **750.00 mV** | 106.25 mV |
+| 30 | 722 MHz | 662.50 mV | **612.50 mV** | 750.00 mV | **750.00 mV** | 137.50 mV |
+| 35 | 622 MHz | 631.25 mV | **581.25 mV** | 750.00 mV | **750.00 mV** | 168.75 mV |
 | 37 | 570 MHz | 618.75 mV | **568.75 mV** | 750.00 mV | **750.00 mV** | 181.25 mV |
+| 40 | 493 MHz | 600.00 mV | **550.00 mV** | 750.00 mV | **750.00 mV** | 200.00 mV |
 | 44 (Min) | 390 MHz | 575.00 mV | **550.00 mV** | 750.00 mV | **750.00 mV** | 200.00 mV |
-| 1 | 1058 MHz | 843.75 mV | **806.25 mV** | 843.75 mV | **806.25 mV** | 0.00 mV |
-| 10 | 954 MHz | 793.75 mV | **756.25 mV** | 793.75 mV | **756.25 mV** | 0.00 mV |
-| 20 | 800 MHz | 725.00 mV | **687.50 mV** | 750.00 mV | **750.00 mV** | 62.50 mV |
-| 37 | 570 MHz | 618.75 mV | **581.25 mV** | 750.00 mV | **750.00 mV** | 168.75 mV |
-| 44 (Min) | 390 MHz | 550.00 mV | **550.00 mV** | 750.00 mV | **750.00 mV** | 200.00 mV |
+
+---
+
+## 4. DVFSRC Vcore Voltage Table (MT6853 / MT6833)
+
+### 4.1 Operating Voltage Levels
+The SoC digital core rail (`dvfsrc-vcore`, regulator.3) operates on 4 discrete voltage steps:
+
+| Level | Stock Voltage | Patched Voltage | Hardware PMIC 0x152c Step | Note |
+| :---: | :---: | :---: | :---: | :--- |
+| 0 | 550.00 mV (550000 uV) | **550.00 mV** | `0x07` (7) | Idle / Deep Sleep Floor |
+| 1 | 600.00 mV (600000 uV) | **600.00 mV** | `0x0f` (15) | Low Power Interconnect |
+| 2 | 650.00 mV (650000 uV) | **650.00 mV** | `0x17` (23) | Nominal Performance (**New Capped Ceiling**) |
+| 3 | 725.00 mV (725000 uV) | **650.00 mV** | `0x17` (23) | **Clamped from 725.00 mV (-75.00 mV Net)** |
+
+### 4.2 Full DVFSRC OPP Table (25 Operating Performance Points)
+Each operating point pairs memory clock frequency (DDR) with Vcore voltage level:
+
+| OPP Index | DDR Frequency | Stock Vcore | Patched Vcore | Net Delta | Active Consumers |
+| :---: | :---: | :---: | :---: | :---: | :--- |
+| OPP 0 | 4266 MHz | 725.00 mV | **650.00 mV** | **-75.00 mV** | 120Hz Display, Peak Burst I/O |
+| OPP 1 | 3200 MHz | 725.00 mV | **650.00 mV** | **-75.00 mV** | 120Hz Display, High Throughput |
+| OPP 2 | 3200 MHz | 725.00 mV | **650.00 mV** | **-75.00 mV** | High Throughput Memory |
+| OPP 3 | 2400 MHz | 725.00 mV | **650.00 mV** | **-75.00 mV** | Dynamic Display Scaling |
+| OPP 4 | 2400 MHz | 725.00 mV | **650.00 mV** | **-75.00 mV** | Balanced High OPP |
+| OPP 5 | 2400 MHz | 600.00 mV | **600.00 mV** | 0.00 mV | Balanced Normal OPP |
+| OPP 6 | 1866 MHz | 725.00 mV | **650.00 mV** | **-75.00 mV** | Video Decode Burst |
+| OPP 7 | 1866 MHz | 725.00 mV | **650.00 mV** | **-75.00 mV** | Medium Display Load |
+| OPP 8 | 1866 MHz | 600.00 mV | **600.00 mV** | 0.00 mV | Medium Load |
+| OPP 9 | 1600 MHz | 725.00 mV | **650.00 mV** | **-75.00 mV** | Display Transition |
+| OPP 10 | 1600 MHz | 650.00 mV | **650.00 mV** | 0.00 mV | Moderate Throughput |
+| OPP 11 | 1600 MHz | 600.00 mV | **600.00 mV** | 0.00 mV | Power Saving |
+| OPP 12 | 1600 MHz | 550.00 mV | **550.00 mV** | 0.00 mV | Idle Power Saving |
+| OPP 13 | 1200 MHz | 650.00 mV | **650.00 mV** | 0.00 mV | Moderate Bus Load |
+| OPP 14 | 1200 MHz | 650.00 mV | **650.00 mV** | 0.00 mV | Moderate Bus Load |
+| OPP 15 | 1200 MHz | 600.00 mV | **600.00 mV** | 0.00 mV | Low Power Bus |
+| OPP 16 | 1200 MHz | 550.00 mV | **550.00 mV** | 0.00 mV | Low Power Bus |
+| OPP 17 | 800 MHz | 650.00 mV | **650.00 mV** | 0.00 mV | UI Idle Active |
+| OPP 18 | 800 MHz | 650.00 mV | **650.00 mV** | 0.00 mV | UI Idle Active |
+| OPP 19 | 800 MHz | 600.00 mV | **600.00 mV** | 0.00 mV | Deep Idle State |
+| OPP 20 | 800 MHz | 550.00 mV | **550.00 mV** | 0.00 mV | Deep Idle State |
+| OPP 21 | 400 MHz | 650.00 mV | **650.00 mV** | 0.00 mV | Screen-Off Audio |
+| OPP 22 | 400 MHz | 650.00 mV | **650.00 mV** | 0.00 mV | Screen-Off Audio |
+| OPP 23 | 400 MHz | 600.00 mV | **600.00 mV** | 0.00 mV | Screen-Off Sleep |
+| OPP 24 | 400 MHz | 550.00 mV | **550.00 mV** | 0.00 mV | Deep Sleep Baseline |

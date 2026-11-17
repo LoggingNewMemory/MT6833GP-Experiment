@@ -22,19 +22,33 @@ fmt_mv() {
     printf "%4d.%02d mV (%d uV)\n" "$mv" "$dec" "$uv"
 }
 
-get_reg_uv() {
-    target="$1"
-    for r in /sys/class/regulator/regulator.*; do
-        if [ -f "$r/name" ]; then
-            name=$(cat "$r/name" 2>/dev/null)
-            if [ "$name" = "$target" ]; then
-                cat "$r/microvolts" 2>/dev/null
-                return
-            fi
-        fi
-    done
-    echo "0"
-}
+# --- 1-Pass Fast Regulator Discovery ---
+reg_vgpu11=""
+reg_vproc2=""
+reg_vsram_proc1=""
+reg_vsram_proc2=""
+reg_vproc1=""
+reg_vsram_md=""
+reg_vsram_others=""
+reg_vcore=""
+reg_dvfsrc=""
+
+for r in /sys/class/regulator/regulator.*; do
+    if [ -f "$r/name" ]; then
+        rname=$(cat "$r/name" 2>/dev/null)
+        case "$rname" in
+            vgpu11) reg_vgpu11="$r/microvolts" ;;
+            vproc2) reg_vproc2="$r/microvolts" ;;
+            vsram_proc1) reg_vsram_proc1="$r/microvolts" ;;
+            vsram_proc2) reg_vsram_proc2="$r/microvolts" ;;
+            vproc1) reg_vproc1="$r/microvolts" ;;
+            vsram_md) reg_vsram_md="$r/microvolts" ;;
+            vsram_others) reg_vsram_others="$r/microvolts" ;;
+            vcore) reg_vcore="$r/microvolts" ;;
+            dvfsrc-vcore) reg_dvfsrc="$r/microvolts" ;;
+        esac
+    fi
+done
 
 clear 2>/dev/null || true
 echo "================================================================="
@@ -52,22 +66,22 @@ echo "-----------------------------------------------------------------"
 # - mt_cpufreq sram_proc2   (B Cache)    -> ldo_vsram_proc2 (regulator.23)
 # - gpufreq    _vgpu-supply (GPU Core)   -> buck_vproc1 (regulator.16)
 # - gpufreq    _vsram_gpu   (GPU SRAM)   -> ldo_vsram_md (regulator.44)
+# - dvfsrc-vcore                         -> dvfsrc-vcore (regulator.3)
 
 # --- 1. CPU Power Rails ---
 echo ""
 echo "[ CPU Logic & Cache Rails ]"
 echo "-----------------------------------------------------------------"
-cpu_little_uv=$(get_reg_uv "vgpu11")
-cpu_big_uv=$(get_reg_uv "vproc2")
-vsram1_uv=$(get_reg_uv "vsram_proc1")
-vsram2_uv=$(get_reg_uv "vsram_proc2")
+cpu_little_uv=$(cat "$reg_vgpu11" 2>/dev/null || echo 0)
+cpu_big_uv=$(cat "$reg_vproc2" 2>/dev/null || echo 0)
+vsram1_uv=$(cat "$reg_vsram_proc1" 2>/dev/null || echo 0)
+vsram2_uv=$(cat "$reg_vsram_proc2" 2>/dev/null || echo 0)
 
 printf "  %-22s : %s\n" "Little CPU (buck_vgpu11)" "$(fmt_mv "$cpu_little_uv")"
 printf "  %-22s : %s\n" "Big CPU    (buck_vproc2)" "$(fmt_mv "$cpu_big_uv")"
 printf "  %-22s : %s\n" "L Cache    (vsram_proc1)" "$(fmt_mv "$vsram1_uv")"
 printf "  %-22s : %s\n" "B Cache    (vsram_proc2)" "$(fmt_mv "$vsram2_uv")"
 
-# Show active CPU OPP table voltage
 if [ -f /proc/cpufreq/MT_CPU_DVFS_LL/cpufreq_oppidx ]; then
     ll_opp0=$(sed -n '3p' /proc/cpufreq/MT_CPU_DVFS_LL/cpufreq_oppidx 2>/dev/null | tr -d '\t ')
     l_opp0=$(sed -n '3p' /proc/cpufreq/MT_CPU_DVFS_L/cpufreq_oppidx 2>/dev/null | tr -d '\t ')
@@ -79,9 +93,9 @@ fi
 echo ""
 echo "[ GPU Power Rails (Mali-G57 MC2) ]"
 echo "-----------------------------------------------------------------"
-gpu_core_uv=$(get_reg_uv "vproc1")
-gpu_sram_uv=$(get_reg_uv "vsram_md")
-gpu_sram_alt_uv=$(get_reg_uv "vsram_others")
+gpu_core_uv=$(cat "$reg_vproc1" 2>/dev/null || echo 0)
+gpu_sram_uv=$(cat "$reg_vsram_md" 2>/dev/null || echo 0)
+gpu_sram_alt_uv=$(cat "$reg_vsram_others" 2>/dev/null || echo 0)
 
 printf "  %-22s : %s\n" "GPU Core   (buck_vproc1)" "$(fmt_mv "$gpu_core_uv")"
 printf "  %-22s : %s\n" "GPU SRAM   (vsram_md)   " "$(fmt_mv "$gpu_sram_uv")"
@@ -103,15 +117,37 @@ if [ "$gpu_sram_alt_uv" -gt 0 ] && [ "$gpu_core_uv" -gt 0 ] 2>/dev/null; then
     fi
 fi
 
-# --- 3. SoC Core Rails ---
+# --- 3. SoC Core & DVFSRC Rails ---
 echo ""
-echo "[ SoC Core & System Rails ]"
+echo "[ SoC Core & DVFSRC Rails ]"
 echo "-----------------------------------------------------------------"
-vcore_uv=$(get_reg_uv "vcore")
-dvfsrc_uv=$(get_reg_uv "dvfsrc-vcore")
+vcore_uv=$(cat "$reg_vcore" 2>/dev/null || echo 0)
+dvfsrc_uv=$(cat "$reg_dvfsrc" 2>/dev/null || echo 0)
 
-printf "  %-22s : %s\n" "vcore      (Digital)    " "$(fmt_mv "$vcore_uv")"
-printf "  %-22s : %s\n" "dvfsrc     (DVFSRC)     " "$(fmt_mv "$dvfsrc_uv")"
+printf "  %-22s : %s\n" "vcore      (buck_vcore) " "$(fmt_mv "$vcore_uv")"
+printf "  %-22s : %s\n" "dvfsrc     (dvfsrc-vcore)" "$(fmt_mv "$dvfsrc_uv")"
+
+# Read DVFSRC sysfs dump
+dvfsrc_dump_path="/sys/devices/platform/10012000.dvfsrc/helio-dvfsrc/dvfsrc_dump"
+if [ -f "$dvfsrc_dump_path" ]; then
+    opp_val=$(grep "CURR_VCORE_OPP" "$dvfsrc_dump_path" 2>/dev/null | awk '{print $3}')
+    sw_req=$(grep "SW_REQ 1~4" "$dvfsrc_dump_path" 2>/dev/null | awk '{print $4}' | tr -d ',')
+    printf "  %-22s : Level %s (SW_REQ 3: %s)\n" "DVFSRC Vcore Level" "${opp_val:-N/A}" "${sw_req:-N/A}"
+fi
+
+# Read MT6359 PMIC register 0x152c (VCORE buck target)
+pwrap_node="/sys/devices/platform/10026000.pwrap/10026000.pwrap:mt6359p/mt-pmic/pmic_access"
+if [ -f "$pwrap_node" ]; then
+    echo 0x152c > "$pwrap_node" 2>/dev/null
+    reg_val_hex=$(cat "$pwrap_node" 2>/dev/null | tr -d '\r\n ')
+    if [ -n "$reg_val_hex" ]; then
+        reg_val_dec=$(( reg_val_hex ))
+        # Formula: 506.25 mV + Selector * 6.25 mV
+        # In uV: 506250 + dec * 6250
+        reg_uv=$(( 506250 + reg_val_dec * 6250 ))
+        printf "  %-22s : %s (Selector %d -> %s)\n" "PMIC Reg 0x152c" "$reg_val_hex" "$reg_val_dec" "$(fmt_mv "$reg_uv")"
+    fi
+fi
 
 # --- 4. Live CPU Frequencies ---
 echo ""
@@ -146,7 +182,7 @@ if [ -f /proc/gpufreqv2/gpufreq_status ]; then
 fi
 printf "  Clock  : %d MHz\n" "$gpu_cur_mhz"
 
-# --- 6. Active Undervolt Module Modules ---
+# --- 6. Active Undervolt Module Health ---
 echo ""
 echo "[ Module & Thermal Health ]"
 echo "-----------------------------------------------------------------"

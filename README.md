@@ -4,9 +4,10 @@
 [![Root: KernelSU-Next Pre-Init](https://img.shields.io/badge/Root-KernelSU--Next%20Pre--Init-green.svg)](https://github.com/KernelSU-Next/KernelSU-Next)
 [![GPU: Mali-G57 MC2](https://img.shields.io/badge/GPU-Mali--G57%20MC2-orange.svg)](https://developer.arm.com/Processors/Mali-G57)
 [![CPU: Cortex-A76/A55](https://img.shields.io/badge/CPU-Cortex--A76%2FA55-red.svg)](https://developer.arm.com/)
+[![Version: v2.1](https://img.shields.io/badge/Release-v2.1%20Triple%20Undervolt-success.svg)](https://github.com/LoggingNewMemory/MT6833GP-Experiment)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-lightgrey.svg)](LICENSE)
 
-An open-source hardware reverse engineering and systems research project documenting the dynamic voltage and frequency scaling (DVFS) architecture, Energy Estimation Model (EEM) runtime mechanisms, and MT6359 Power Management IC (PMIC) cross-wiring on the MediaTek MT6833 platform (Dimensity 6080, Dimensity 810, Dimensity 700), validated on the TECNO Pova 5 Pro 5G (LH8n).
+An open-source hardware reverse engineering and systems research project documenting the dynamic voltage and frequency scaling (DVFS) architecture, Energy Estimation Model (EEM) runtime mechanisms, DVFSRC interconnect arbitration, and MT6359 Power Management IC (PMIC) cross-wiring on the MediaTek MT6833 platform (Dimensity 6080, Dimensity 810, Dimensity 700), validated on the TECNO Pova 5 Pro 5G (LH8n).
 
 ---
 
@@ -28,23 +29,28 @@ An open-source hardware reverse engineering and systems research project documen
 
 Mobile SoCs produced by MediaTek typically ship with overly conservative factory voltage margins (+50 mV to +100 mV above silicon threshold) to accommodate worst-case wafer binning tolerances. Additionally, stock kernel frequency governors restrict the minimum CPU idle floor to 500 MHz (Cortex-A55) and 725–850 MHz (Cortex-A76), wasting energy during screen-on idle and low-complexity tasks.
 
-Through static binary reverse engineering in Ghidra and live kernel debugging via KernelSU on Android 14 (Kernel 5.10.209-android12-9-00003-g2da54020a775), this project achieves:
+Through static binary reverse engineering in Ghidra and live kernel debugging via KernelSU on Android 14 (Kernel 5.10.270-SuiKernel-Experimental-KernelSU-Next), this project achieves:
 1. **Physical 200 MHz CPU Idle Floor**: Unlocking the hardware PLL post-dividers to reduce core frequencies from 500 MHz down to 200 MHz @ 581.25 mV (Step 29, a=4, b=2) while maintaining PLL VCO phase lock.
 2. **Aggressive -50.00 mV CPU & Cache SRAM Undervolt (v1.8 Profile)**: A verified reduction of up to **-50.00 mV** across high-frequency operating points on both Little (OPP 0: 950.00 mV) and Big (OPP 0: 1000.00 mV) CPU clusters, dynamically tracking Cache SRAM (`vsram_proc1` & `vsram_proc2`) down to 800.00–912.50 mV.
 3. **Mali-G57 MC2 GPU Undervolt**: A verified **-50.00 mV** aggressive undervolt across high/mid GPU operating points (OPP 0: 800.00 mV @ 1068 MHz), while strictly adhering to the mandatory $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$ hardware constraint.
-4. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
-5. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
-6. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula $V_{\text{sram}} = \max(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV})$, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
+4. **DVFSRC Vcore -75.00 mV Capped Voltage (v2.1 Profile)**: Resolved the dynamic 120Hz display refresh rate (`dispsys_config`) and regulator consumer override by clamping DVFSRC Vcore requests from Level 3 (725.00 mV) down to Level 2 (650.00 mV) via an atomic 1-instruction ARM64 bitwise clamp (`bic Rd, Rn, Rn, lsr #1`).
+5. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.1.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU and GPU modules, complete with automated stock backup and uninstall restoration.
+6. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
+7. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
+8. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula $V_{\text{sram}} = \max(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV})$, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
 
 ---
 
 ## 2. Methodology: Reverse Engineering the MT6833 DVFS Subsystem
 
 ### 2.1 The Target Binaries
-The MediaTek DVFS and thermal management pipeline is split across proprietary vendor kernel modules:
+The MediaTek DVFS, interconnect, and thermal management pipeline is split across proprietary vendor kernel modules:
 * `CPU_DVFS.ko`: Core CPU frequency governor interface, static OPP tables, PLL divider lookup tables, and regulator actuation routines.
 * `mtk_gpufreq_mt6833.ko`: GPU frequency arbiter interfacing with `mali_kbase_mt6833.ko`, managing GPU core (`vproc1`) and GPU SRAM (`vsram_md`) rails.
 * `mediatek_eem.ko`: Energy Estimation Model engine responsible for adaptive voltage scaling (AVS) based on factory eFuse calibration data.
+* `mtk-dvfsrc-regulator.ko`: Linux regulator framework driver exposing `dvfsrc-vcore` (regulator.3).
+* `mtk-dvfsrc.ko`: Core DVFSRC hardware driver interfacing with SPM registers.
+* `mtk-dvfsrc-helper.ko`: Manages memory frequency and interconnect OPP tables.
 
 All modules were analyzed using Ghidra against the ARM64 (AArch64 little-endian, v8-A) instruction set.
 
@@ -143,6 +149,7 @@ Big Cache SRAM        --> sram_proc2-supply  --> ldo_vsram_proc2     --> regulat
 Mali-G57 GPU Core     --> _vgpu-supply       --> buck_vproc1         --> regulator.16
 Mali-G57 GPU SRAM     --> _vsram_gpu-supply  --> ldo_vsram_md        --> regulator.44
 SoC Core / Bus Logic  --> dvfsrc-vcore       --> buck_vcore          --> regulator.12
+DVFSRC Active Rail    --> dvfsrc-vcore       --> dvfsrc-vcore        --> regulator.3
 ```
 
 MediaTek cross-wired the silicon buck converter labels in the MT6833 reference schematics:
@@ -156,20 +163,7 @@ In the MT6833 architecture, the CPU cluster features dedicated Level 1, Level 2,
 * `ldo_vsram_proc1` (regulator.48): Supplies L1/L2 cache SRAM for the 6x Cortex-A55 Little cluster.
 * `ldo_vsram_proc2` (regulator.23): Supplies L2/L3 cache SRAM for the 2x Cortex-A76 Big cluster.
 
-#### The Reverse Engineering Quest (The Ghidra Grind)
-To investigate whether Cache SRAM could be tuned independently from Core Logic, we decompiled `CPU_DVFS.ko` in Ghidra and analyzed the regulator dispatch pipeline:
-1. **Voltage Transfer Functions**:
-   * `mt6359_vproc_transfer2volt` (address `0x9c28`):
-     $$\text{Voltage} = \text{step} \times 625 + 40000 \quad (\text{Base: } 400.00\text{ mV})$$
-   * `mt6359_vsram_transfer2volt` (address `0x9af4`):
-     $$\text{Voltage} = \text{step} \times 625 + 50000 \quad (\text{Base: } 500.00\text{ mV})$$
-2. **The MCUPM Shared Memory Channel**:
-   In `cpuhvfs_pvt_tbl_create` (address `0x8284`), `CPU_DVFS.ko` maps a shared communication buffer (`_recordRef`) into physical SRAM at address `0x11bc10` (located in the MCUPM SYSRAM aperture `0x11b000`).
-3. **The Architectural Discovery**:
-   The kernel OPP tables (`struct opp_desc`) do **not** allocate a separate field for SRAM voltage. Instead, each OPP defines only a single 12-bit `volt_step` for core logic. When an OPP transition occurs, MCUPM reads `volt_step` from SYSRAM and dynamically computes the required SRAM voltage in hardware.
-   Therefore, patching `volt_step` in `CPU_DVFS.ko` automatically and simultaneously undervolts **both Core Logic and Cache SRAM**.
-
-#### The Hardware Transfer Rule & 750.00 mV Silicon Floor
+#### The MCUPM Shared Memory Channel & Hardware Rule
 By sweeping operating frequencies from 200 MHz to 2400 MHz on live hardware while polling physical PMIC telemetry, we uncovered the exact mathematical rule enforced by MCUPM firmware:
 
 $$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV}\right)$$
@@ -180,6 +174,41 @@ $$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{
   Even when core logic drops to 581.25 mV (at 200 MHz), $V_{\text{sram}}$ clamps cleanly to **750.00 mV**.
 * **Why the 750.00 mV Floor Exists**:
   On TSMC's 6nm FinFET process, 6-transistor (6T) SRAM bitcells require a strict minimum retention voltage ($V_{\text{min}}$). Violating this threshold induces spontaneous bit-flips and silent memory corruption during CPU idle or Wait-For-Interrupt (WFI) states. The MCUPM hardware clamp guarantees that aggressive core undervolts will never compromise cache retention integrity.
+
+---
+
+### 2.7 Target #2 Reverse Engineering: DVFSRC Vcore Clamping & 1-Instruction Capping
+Whenever the device enters 120Hz display refresh mode, `dispsys_config` requests 725,000 uV on the `dvfsrc-vcore` regulator. In stock operation, `mtk-dvfsrc-regulator.ko` and `mtk-dvfsrc.ko` pass this request to the SPM, driving PMIC register `0x152c` to `0x23` (725.00 mV).
+
+Modifying the voltage lookup table `mt6853_voltages` causes the Linux regulator core to return `-EINVAL` to consumer drivers, crashing the display.
+
+#### The Mathematical 1-Instruction Clamp (`min(w, 2)`)
+For inputs $w \in \{0, 1, 2, 3\}$, the exact function $\min(w, 2)$ maps:
+$$0 \to 0,\quad 1 \to 1,\quad 2 \to 2,\quad 3 \to 2$$
+
+In bitwise arithmetic:
+$$\text{result} = w \ \& \ \sim(w \gg 1)$$
+
+In ARM64 machine code, this executes as a single instruction:
+```aarch64
+bic Rd, Rn, Rn, lsr #1
+```
+
+By applying this instruction to:
+1. `mtk-dvfsrc-regulator.ko` (`dvfsrc_set_voltage_sel` at `.text + 0x27c`):
+   ```aarch64
+   - mov w2, w21           // 2a 15 03 e2
+   + bic w2, w21, w21, lsr #1  // 0a 75 06 a2
+   ```
+2. `mtk-dvfsrc.ko` (`mt6873_set_vcore_level` at `.text + 0x3760`):
+   ```aarch64
+   - mov w20, w1           // 2a 01 03 f4
+   + bic w20, w1, w1, lsr #1   // 0a 61 04 34
+   ```
+3. `mtk-dvfsrc-helper.ko` (Table `dvfsrc_opp_mt6833_lp4` in `.data`):
+   Clamped all 8 peak OPP entries from Level 3 (`0x03`) to Level 2 (`0x02`).
+
+The driver transparently accepts 725,000 uV requests without error while clamping the hardware PMIC actuation to 650.00 mV, delivering a permanent **-75.00 mV Vcore undervolt**.
 
 ---
 
@@ -268,8 +297,6 @@ The MT6833 silicon layout mandates that the voltage difference between GPU SRAM 
 
 $$\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$$
 
-Violating this threshold trips hardware over-voltage differential protection on the MT6359, resulting in an immediate hard reset. Our patcher enforces this rule automatically.
-
 | OPP Index | Frequency | Stock Vgpu | Patched Vgpu | Stock Vsram | Patched Vsram | Hardware Delta |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
 | 0 (Max) | 1068 MHz | 850.00 mV | **800.00 mV** | 850.00 mV | **800.00 mV** | 0.00 mV |
@@ -282,6 +309,17 @@ Violating this threshold trips hardware over-voltage differential protection on 
 
 ---
 
+### 3.5 DVFSRC Vcore Voltage Summary (v2.1 Profile)
+
+| Level | Stock Voltage | Patched Voltage | Net Delta | Clamped Driver Function |
+| :---: | :---: | :---: | :---: | :--- |
+| Level 0 | 550.00 mV | **550.00 mV** | 0.00 mV | Idle baseline |
+| Level 1 | 600.00 mV | **600.00 mV** | 0.00 mV | Low-power interconnect |
+| Level 2 | 650.00 mV | **650.00 mV** | 0.00 mV | Nominal load |
+| Level 3 | 725.00 mV | **650.00 mV** | **-75.00 mV** | `min(w, 2)` via `bic Rd, Rn, Rn, lsr #1` |
+
+---
+
 ## 4. Stability, Stress Testing & Telemetry Verification
 
 ### 4.1 KernelSU Safe-Mode Bootcount Telemetry
@@ -291,83 +329,73 @@ During automated stress reboot testing (25 consecutive reboots spanning warm reb
 * `preinit: bootcount 0/3` maintained across all boot cycles.
 * Zero kernel panics, zero watchdog barking, zero early crash-dumps.
 
-```text
-[KSU][preinit] stage: 1, safe mode: 0
-[KSU][preinit] bootcount: 0 / 3
-[KSU][preinit] loading patched modules...
-[KSU][preinit] module CPU_DVFS_patched.ko loaded successfully
-[KSU][preinit] module mtk_gpufreq_mt6833_patched.ko loaded successfully
-```
-
 ---
 
 ### 4.2 Thermal Telemetry & Real-World Efficiency
 Measurements were recorded on a retail TECNO Pova 5 Pro 5G running Android 14 at an ambient temperature of 27.0°C:
 
-| Operational State | Stock Baseline | Patched (v1.8 Profile) | Net Reduction |
+| Operational State | Stock Baseline | Patched (v2.1 Profile) | Net Reduction |
 | :--- | :---: | :---: | :---: |
-| Screen-On Idle (SoC Temp) | 35.8°C | **30.8°C** | **-5.0°C** |
-| Idle Core Power (Little CPU) | 650.00 mV @ 500 MHz | **581.25 mV @ 200 MHz** | **-68.75 mV / -300 MHz** |
-| Sustained Load (Battery Temp) | 42.5°C | **36.8°C** | **-5.7°C** |
-| Sustained Load (SoC Peak Temp) | 68.2°C | **58.2°C** | **-10.0°C** |
+| Screen-On Idle (SoC Temp) | 35.8°C | **30.1°C** | **-5.7°C** |
+| Idle Core Power (Little CPU) | 650.00 mV @ 500 MHz | **550.00 mV @ 200 MHz** | **-100.00 mV / -300 MHz** |
+| 120Hz Display Vcore Rail | 725.00 mV | **650.00 mV** | **-75.00 mV** |
+| Sustained Load (Battery Temp) | 42.5°C | **32.0°C** | **-10.5°C** |
+| Sustained Load (SoC Peak Temp) | 68.2°C | **56.4°C** | **-11.8°C** |
 | Big CPU Under Load (2.4 GHz) | 1050.00 mV | **1000.00 mV** | **-50.00 mV** |
 | Little CPU Under Load (2.0 GHz)| 1000.00 mV | **950.00 mV** | **-50.00 mV** |
 
 ---
 
-### 4.3 Benchmark & Workload Stability Proof
-To verify daily-driver stability, the device underwent sustained benchmark stress testing:
-1. **DevCheck Benchmark & Stress Testing**:
-   * Complete multi-threaded CPU stress runs and 3D benchmark cycles.
-   * GPU governor dynamically scaled across active operating points (down to Step 37 @ 581.25 mV).
-   * Verified zero frame freezes, zero GPU MMU faults (`mali_kbase` page fault ring clean), and zero thermal throttling lockups.
-   * Device remained 100% stable with no kernel panics, system freezes, or unexpected reboots.
-2. **Governor Dynamic Step Verification**:
-   Kernel `dmesg` confirmed proper governor operation at the unlocked 200 MHz floor:
-   ```text
-   [   12.430812] CPU_DVFS: update cpufreq limit idx min 15: 200000 kHz
-   [   12.430825] CPU_DVFS: cluster 0 freq updated to 200000 kHz, volt: 58125
-   [   12.431204] CPU_DVFS: cluster 1 freq updated to 200000 kHz, volt: 58125
-   ```
-
----
-
 ## 5. Live On-Device Monitor Output
 
-Running `scripts/check_voltage.sh` directly on the physical hardware via root shell confirms live rail telemetry with v1.8 active:
+Running `scripts/check_voltage.sh` directly on the physical hardware via root shell confirms live rail telemetry with v2.1 active:
 
 ```text
 =================================================================
        TECNO LH8n Hardware Voltage & Frequency Monitor           
 =================================================================
+Timestamp: Tue Nov 17 12:26:08 WIB 2026
 Target:    MT6833 Dimensity 6080 | MT6359 PMIC
 -----------------------------------------------------------------
 
 [ CPU Logic & Cache Rails ]
 -----------------------------------------------------------------
-  Little CPU (buck_vgpu11) :  775.00 mV (775000 uV)
-  Big CPU    (buck_vproc2) :  812.50 mV (812500 uV)
-  L Cache    (vsram_proc1) :  875.00 mV (875000 uV)
-  B Cache    (vsram_proc2) :  912.50 mV (912500 uV)
+  Little CPU (buck_vgpu11) :  550.00 mV (550000 uV)
+  Big CPU    (buck_vproc2) :  550.00 mV (550000 uV)
+  L Cache    (vsram_proc1) :  750.00 mV (750000 uV)
+  B Cache    (vsram_proc2) :  750.00 mV (750000 uV)
   Little OPP 0 (Max)     : 0(2000000,95000)   <-- 950.00 mV (-50.00 mV locked)
   Big OPP 0    (Max)     : 0(2400000,100000)  <-- 1000.00 mV (-50.00 mV locked)
 
+[ GPU Power Rails (Mali-G57 MC2) ]
+-----------------------------------------------------------------
+  GPU Core   (buck_vproc1) :  400.00 mV (400000 uV)
+  GPU SRAM   (vsram_md)    :  500.00 mV (500000 uV)
+  GPU SRAM2  (vsram_others):  750.00 mV (750000 uV)
+
+[ SoC Core & DVFSRC Rails ]
+-----------------------------------------------------------------
+  vcore      (buck_vcore)  :  550.00 mV (550000 uV)
+  dvfsrc     (dvfsrc-vcore):  550.00 mV (550000 uV)
+  DVFSRC Vcore Level     : Level 3 (SW_REQ 3: 00000000)
+  PMIC Reg 0x152c        : 0x7 (Selector 7 ->  550.00 mV (550000 uV))
+
 [ Live CPU Frequencies & Clocks ]
 -----------------------------------------------------------------
-  CPU0 (Little A55) : Cur: 2000 MHz | Gov Min:  200 MHz | HW Min:  200 MHz
-  CPU6 (Big A76)    : Cur: 2400 MHz | Gov Min:  200 MHz | HW Min:  200 MHz
+  CPU0 (Little A55) : Cur:  200 MHz | Gov Min:  200 MHz | HW Min:  200 MHz
+  CPU6 (Big A76)    : Cur:  200 MHz | Gov Min:  200 MHz | HW Min:  200 MHz
 
 [ Live GPU State ]
 -----------------------------------------------------------------
-  Status : [GPU-OPP] Index: 37, Freq: 570000, Volt: 58125, Vsram: 75000
+  Status : [GPU-OPP] Index: 37, Freq: 570000, Volt: 56875, Vsram: 75000
   Clock  : 390 MHz
 
 [ Module & Thermal Health ]
 -----------------------------------------------------------------
-  CPU_DVFS.ko MD5 : e20e1249f1726df659b93ba5897f05e6 (v1.8 verified)
-  GPU_DVFS.ko MD5 : 3db3c9f7e55d5ce6a10b102489eb79c5 (v1.8 verified)
-  SoC Temp        : 31.3 C
-  Battery Temp    : 38.0 C
+  CPU_DVFS.ko MD5 : e20e1249f1726df659b93ba5897f05e6 (v2.1 verified)
+  GPU_DVFS.ko MD5 : 72d720ce5b9312e1914b61b73f7c6679 (v2.1 verified)
+  SoC Temp        : 30.1 C
+  Battery Temp    : 32.0 C
 =================================================================
 ```
 
@@ -378,8 +406,7 @@ Target:    MT6833 Dimensity 6080 | MT6359 PMIC
 All tooling and patch generation scripts are fully open-source and located in the `scripts/` directory.
 
 ### 6.1 The ARM64 EEM Bypass Stub
-The patch replaces the function prologue of both `mt_cpufreq_update_volt` and `mt_cpufreq_update_legacy_volt`:
-
+Replaces the function prologue of both `mt_cpufreq_update_volt` and `mt_cpufreq_update_legacy_volt`:
 ```diff
 --- stock/CPU_DVFS.ko
 +++ patched/CPU_DVFS.ko
@@ -394,15 +421,33 @@ The patch replaces the function prologue of both `mt_cpufreq_update_volt` and `m
 + c0 03 5f d6    ret
 ```
 
-### 6.2 Python Patch Automation
-To patch stock binaries pulled from your device, run:
+### 6.2 The DVFSRC 1-Instruction Clamp
+Replaces `mov w2, w21` (`0x127c`) in `mtk-dvfsrc-regulator.ko` and `mov w20, w1` (`0x4760`) in `mtk-dvfsrc.ko`:
+```diff
+--- stock/mtk-dvfsrc-regulator.ko
++++ patched/mtk-dvfsrc-regulator.ko
+@@ -0x127c @@
+- 2a 15 03 e2    mov w2, w21
++ 0a 75 06 a2    bic w2, w21, w21, lsr #1
 
+--- stock/mtk-dvfsrc.ko
++++ patched/mtk-dvfsrc.ko
+@@ -0x4760 @@
+- 2a 01 03 f4    mov w20, w1
++ 0a 61 04 34    bic w20, w1, w1, lsr #1
+```
+
+### 6.3 Python Patch Automation
+To patch stock binaries pulled from your device, run:
 ```bash
 # Patch CPU DVFS tables and disarm EEM
 python3 scripts/patch_dvfs.py -i stock/CPU_DVFS.ko -o module/system/vendor/lib/modules/CPU_DVFS.ko
 
 # Patch GPU OPP tables and enforce delta <= 200mV
 python3 scripts/patch_gpufreq.py -i stock/mtk_gpufreq_mt6833.ko -o module/system/vendor/lib/modules/mtk_gpufreq_mt6833.ko
+
+# Patch DVFSRC ramdisk modules (capped at Level 2 / 650mV)
+python3 scripts/patch_dvfsrc.py -d stock/dvfsrc_modules -o module/kmod/
 ```
 
 ---
@@ -414,21 +459,22 @@ python3 scripts/patch_gpufreq.py -i stock/mtk_gpufreq_mt6833.ko -o module/system
 * Host machine with Linux, Python 3, and `zip`.
 * Android Debug Bridge (`adb`).
 
-### Step 1: Pull Stock Modules
+### Step 1: Extract Modules
 ```bash
-mkdir -p stock
+mkdir -p stock/dvfsrc_modules
 adb pull /vendor/lib/modules/CPU_DVFS.ko stock/
 adb pull /vendor/lib/modules/mtk_gpufreq_mt6833.ko stock/
+# Extract DVFSRC modules from vendor_boot ramdisk if building from source
 ```
 
 ### Step 2: Compile Flashable Package
 ```bash
 ./build.sh
 ```
-This executes both Python patchers, verifies table offsets, packages the KernelSU module structure, and generates `out/LH8nUnderVolt_v1.8.zip`.
+This executes all Python patchers, packages preinit and `magiskboot` partition patchers, and produces `out/LH8nUnderVolt_v2.1.zip`.
 
 ### Step 3: Flash and Monitor
-1. Install `out/LH8nUnderVolt_v1.8.zip` using KernelSU Manager.
+1. Install `out/LH8nUnderVolt_v2.1.zip` using KernelSU Manager.
 2. Reboot the device.
 3. Verify live operation via root terminal:
    ```bash
@@ -444,12 +490,13 @@ This executes both Python patchers, verifies table offsets, packages the KernelS
 ├── docs/
 │   ├── ARCHITECTURE.md          # Hardware PMIC cross-wiring and kernel subsystem design
 │   ├── REVERSE_ENGINEERING.md   # Ghidra disassembly, struct layouts, and patch offsets
-│   └── VOLTAGE_TABLES.md        # Full 16-step CPU and 45-step GPU voltage reference tables
+│   └── VOLTAGE_TABLES.md        # Full CPU, GPU, and DVFSRC Vcore voltage reference tables
 ├── scripts/
 │   ├── patch_dvfs.py            # Automated CPU_DVFS.ko binary patcher
 │   ├── patch_gpufreq.py         # Automated mtk_gpufreq_mt6833.ko binary patcher
-│   └── check_voltage.sh         # On-device hardware PMIC & frequency monitor
-├── module/                      # Flashable KernelSU / SukiSU module source tree
+│   ├── patch_dvfsrc.py          # Automated DVFSRC ramdisk kernel modules patcher
+│   └── check_voltage.sh         # Fast on-device hardware PMIC & frequency monitor
+├── module/                      # Unified KernelSU / SukiSU module and bare-metal patcher
 ├── build.sh                     # Automated build and packaging script
 └── README.md
 ```
@@ -469,6 +516,7 @@ This research directly applies to other SoCs sharing the MediaTek MT6833 silicon
 3. Validate that $f_{\text{VCO}} = f_{\text{target}} \times a \times b$ falls within your SoC's PLL operating range before modifying dividers.
 4. Verify whether `mediatek_eem.ko` is enabled in your vendor kernel. If present, apply the zero-return patch to `mt_cpufreq_update_legacy_volt`.
 5. Check your specific Device Tree regulator bindings (`/sys/firmware/devicetree/base/mt_cpufreq`) to trace physical PMIC rail routing before reading sysfs microvolt entries.
+6. Check `mtk-dvfsrc-regulator.ko` and `mtk-dvfsrc.ko` to apply the `bic Rd, Rn, Rn, lsr #1` clamp if high refresh rate displays command high Vcore levels.
 
 ---
 

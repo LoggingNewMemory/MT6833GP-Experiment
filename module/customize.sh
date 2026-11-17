@@ -1,7 +1,8 @@
 #!/system/bin/sh
 
-ui_print "- Installing TECNO LH8n UnderVolt & UnderClock"
-ui_print "- Version: v1.8"
+ui_print "- Installing TECNO LH8n Triple UnderVolt & UnderClock"
+ui_print "- Version: v2.1"
+ui_print "- Targets: CPU (-50mV), GPU (-50mV), DVFSRC Vcore (-75mV)"
 ui_print "- Author: Kana Wesley Yamada"
 
 # 1. Check root environment (Preinit requires KernelSU or SukiSU)
@@ -39,9 +40,12 @@ if ! echo "$PREINIT_STATUS" | grep -q "preinit:"; then
 fi
 
 ui_print "- Preinit verified: supported and ready!"
-ui_print "- Setting up CPU & GPU DVFS modules..."
 
-# Setup preinit files in /metadata partition
+# ==============================================================================
+# Step 1: Deploy CPU & GPU DVFS modules to Preinit
+# ==============================================================================
+ui_print "- Deploying CPU (-50mV) & GPU (-50mV) preinit modules..."
+
 mkdir -p /metadata/vold/ksu/preinit/lh8n_undervolt/bin
 mkdir -p /metadata/vold/ksu/preinit/lh8n_undervolt/kmod
 
@@ -75,9 +79,91 @@ if [ -f /metadata/vold/ksu/preinit/.manifest ]; then
     chmod 644 /metadata/vold/ksu/preinit/.manifest 2>/dev/null
 fi
 
+# ==============================================================================
+# Step 2: Bare-Metal Partition Patching for DVFSRC Vcore (vendor_boot)
+# ==============================================================================
+ui_print "- Checking vendor_boot partition for DVFSRC Vcore..."
+
+SLOT=$(getprop ro.boot.slot_suffix)
+if [ -z "$SLOT" ]; then
+    SLOT="_$(getprop ro.boot.slot)"
+fi
+[ "$SLOT" = "_" ] && SLOT=""
+
+VB_DEV="/dev/block/by-name/vendor_boot${SLOT}"
+if [ ! -e "$VB_DEV" ]; then
+    VB_DEV="/dev/block/bootdevice/by-name/vendor_boot${SLOT}"
+fi
+
+MAGISKBOOT="$MODPATH/tools/magiskboot"
+chmod 755 "$MAGISKBOOT" 2>/dev/null
+
+if [ -e "$VB_DEV" ] && [ -x "$MAGISKBOOT" ] && [ -f "$MODPATH/kmod/mtk-dvfsrc.ko" ]; then
+    BACKUP_DIR="/data/adb/lh8n_backup"
+    mkdir -p "$BACKUP_DIR"
+    BACKUP_FILE="${BACKUP_DIR}/vendor_boot_stock${SLOT}.img"
+
+    if [ ! -f "$BACKUP_FILE" ]; then
+        ui_print "- Creating stock backup of vendor_boot..."
+        dd if="$VB_DEV" of="$BACKUP_FILE" bs=1M 2>/dev/null
+        ui_print "- Stock backup preserved: $BACKUP_FILE"
+    else
+        ui_print "- Stock backup already exists: $BACKUP_FILE"
+    fi
+
+    ui_print "- Patching vendor_boot ramdisk (DVFSRC Vcore capped @ 650mV)..."
+    WORK_DIR="/data/local/tmp/vb_patch_$$"
+    rm -rf "$WORK_DIR"
+    mkdir -p "$WORK_DIR"
+    cd "$WORK_DIR" || true
+
+    dd if="$VB_DEV" of=vendor_boot.img bs=1M 2>/dev/null
+    "$MAGISKBOOT" unpack vendor_boot.img >/dev/null 2>&1
+
+    CPIO_PATH=""
+    if [ -f "vendor_ramdisk/ramdisk.cpio" ]; then
+        CPIO_PATH="vendor_ramdisk/ramdisk.cpio"
+    elif [ -f "ramdisk.cpio" ]; then
+        CPIO_PATH="ramdisk.cpio"
+    fi
+
+    if [ -n "$CPIO_PATH" ]; then
+        # Replace DVFSRC modules (core driver, regulator clamp, helper table) with 650mV-capped suite
+        "$MAGISKBOOT" cpio "$CPIO_PATH" "add 0644 lib/modules/mtk-dvfsrc.ko $MODPATH/kmod/mtk-dvfsrc.ko" >/dev/null 2>&1
+        if [ -f "$MODPATH/kmod/mtk-dvfsrc-regulator.ko" ]; then
+            "$MAGISKBOOT" cpio "$CPIO_PATH" "add 0644 lib/modules/mtk-dvfsrc-regulator.ko $MODPATH/kmod/mtk-dvfsrc-regulator.ko" >/dev/null 2>&1
+        fi
+        if [ -f "$MODPATH/kmod/mtk-dvfsrc-helper.ko" ]; then
+            "$MAGISKBOOT" cpio "$CPIO_PATH" "add 0644 lib/modules/mtk-dvfsrc-helper.ko $MODPATH/kmod/mtk-dvfsrc-helper.ko" >/dev/null 2>&1
+        fi
+        "$MAGISKBOOT" repack vendor_boot.img new-boot.img >/dev/null 2>&1
+
+        if [ -f "new-boot.img" ] && [ $(stat -c%s new-boot.img 2>/dev/null || echo 0) -gt 10000000 ]; then
+            ui_print "- Writing patched vendor_boot to $VB_DEV..."
+            dd if=new-boot.img of="$VB_DEV" bs=1M 2>/dev/null
+            ui_print "- DVFSRC Vcore successfully patched to 650.00 mV (-75.00 mV)!"
+        else
+            ui_print "! Warning: Repacked boot image check failed. vendor_boot untouched."
+        fi
+    else
+        ui_print "! Warning: Unable to locate ramdisk.cpio. Skipping vendor_boot patch."
+    fi
+
+    cd /
+    rm -rf "$WORK_DIR"
+else
+    ui_print "! Notice: vendor_boot device or tools not found. Skipping Vcore partition patch."
+fi
+
+# ==============================================================================
+# Step 3: Set module file permissions
+# ==============================================================================
 set_perm_recursive "$MODPATH" 0 0 0755 0644
 set_perm "$MODPATH/service.sh" 0 0 0755
 set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
+set_perm "$MODPATH/uninstall.sh" 0 0 0755
+set_perm "$MODPATH/tools/magiskboot" 0 0 0755
 set_perm "$MODPATH/preinit/bin/mount_dvfs" 0 0 0755
 
-ui_print "- Installation complete! Reboot to apply."
+ui_print "- All components installed successfully!"
+ui_print "- Reboot to apply CPU (-50mV), GPU (-50mV), and Vcore (-75mV)."

@@ -35,6 +35,14 @@ python3 "${SCRIPT_DIR}/scripts/patch_gpufreq.py" \
     -i "${STOCK_DIR}/mtk_gpufreq_mt6833.ko" \
     -o "${OUT_DIR}/mtk_gpufreq_mt6833.ko"
 
+# Step 2.5: Optional DVFSRC modules patch
+if [ -d "${STOCK_DIR}/dvfsrc_modules" ] && [ -f "${STOCK_DIR}/dvfsrc_modules/mtk-dvfsrc.ko" ]; then
+    echo "[*] Step 2.5: Patching DVFSRC ramdisk modules (650.00mV cap)..."
+    python3 "${SCRIPT_DIR}/scripts/patch_dvfsrc.py" \
+        -d "${STOCK_DIR}/dvfsrc_modules" \
+        -o "${OUT_DIR}/dvfsrc_modules"
+fi
+
 echo "[*] Step 3: Preparing module payload..."
 TEMP_MODULE="$(mktemp -d)"
 cp -r "${MODULE_SRC}/." "${TEMP_MODULE}/"
@@ -42,7 +50,9 @@ cp -r "${MODULE_SRC}/." "${TEMP_MODULE}/"
 # Populate kernel modules
 mkdir -p "${TEMP_MODULE}/vendor/lib/modules" \
          "${TEMP_MODULE}/system/vendor/lib/modules" \
-         "${TEMP_MODULE}/preinit/kmod"
+         "${TEMP_MODULE}/preinit/kmod" \
+         "${TEMP_MODULE}/kmod" \
+         "${TEMP_MODULE}/tools"
 
 cp "${OUT_DIR}/CPU_DVFS.ko" "${TEMP_MODULE}/vendor/lib/modules/"
 cp "${OUT_DIR}/CPU_DVFS.ko" "${TEMP_MODULE}/system/vendor/lib/modules/"
@@ -51,6 +61,10 @@ cp "${OUT_DIR}/CPU_DVFS.ko" "${TEMP_MODULE}/preinit/kmod/"
 cp "${OUT_DIR}/mtk_gpufreq_mt6833.ko" "${TEMP_MODULE}/vendor/lib/modules/"
 cp "${OUT_DIR}/mtk_gpufreq_mt6833.ko" "${TEMP_MODULE}/system/vendor/lib/modules/"
 cp "${OUT_DIR}/mtk_gpufreq_mt6833.ko" "${TEMP_MODULE}/preinit/kmod/"
+
+if [ -d "${OUT_DIR}/dvfsrc_modules" ]; then
+    cp "${OUT_DIR}/dvfsrc_modules/"*.ko "${TEMP_MODULE}/kmod/"
+fi
 
 # Copy check_voltage tool into package
 cp "${SCRIPT_DIR}/scripts/check_voltage.sh" "${TEMP_MODULE}/"

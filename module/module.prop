@@ -1,6 +1,6 @@
 id=lh8n_undervolt
-name=TECNO LH8n UnderVolt & UnderClock
-version=v1.8
-versionCode=180
+name=TECNO LH8n Triple UnderVolt & UnderClock
+version=v2.1
+versionCode=21
 author=Kana Wesley Yamada
-description=Patched CPU_DVFS.ko (200MHz minfreq + EEM bypass + -50.00mV CPU & Cache SRAM) and mtk_gpufreq_mt6833.ko (-50.00mV GPU) for MT6833 / Dimensity 6080.
+description=All-in-One bare-metal undervolt: CPU (-50mV, 200MHz floor), GPU (-50mV, 1068MHz@800mV), and DVFSRC Vcore (OPP 0 capped at 650mV / -75mV via hardware & regulator clamp). Includes automatic vendor_boot backup and restore.

@@ -25,7 +25,7 @@ done
 
 # Log status
 {
-    echo "=== Undervolt Module Status ==="
+    echo "=== Triple Undervolt Module Status ==="
     date
     echo "--- System & Root Manager Info ---"
     uname -a
@@ -47,7 +47,7 @@ done
     mount | grep -E '/vendor/lib/modules' 2>/dev/null
     md5sum /vendor/lib/modules/CPU_DVFS.ko /vendor/lib/modules/mtk_gpufreq_mt6833.ko 2>/dev/null
     echo "--- Loaded Kernel Modules (lsmod) ---"
-    lsmod | grep -E 'CPU_DVFS|mtk_gpufreq' 2>/dev/null
+    lsmod | grep -E 'CPU_DVFS|mtk_gpufreq|dvfsrc' 2>/dev/null
     echo "--- Preinit Kernel Log ---"
     dmesg 2>/dev/null | grep -E 'lh8n_undervolt|CPU_DVFS|mtk_gpufreq' | tail -n 20
     echo "--- CPU Frequencies ---"
@@ -59,7 +59,7 @@ done
     cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq 2>/dev/null
     echo "CPU6 scaling_min_freq:"
     cat /sys/devices/system/cpu/cpu6/cpufreq/scaling_min_freq 2>/dev/null
-    echo "--- OPP Tables ---"
+    echo "--- CPU OPP Tables ---"
     echo "CPU0 OPP table:"
     cat /proc/cpufreq/MT_CPU_DVFS_LL/cpufreq_oppidx 2>/dev/null
     echo "CPU6 OPP table:"
@@ -75,4 +75,13 @@ done
     cat /sys/class/regulator/regulator.9/microvolts 2>/dev/null
     echo "GPU Vsram (vsram_others):"
     cat /sys/class/regulator/regulator.32/microvolts 2>/dev/null
+    echo "--- DVFSRC & Vcore Status ---"
+    echo "DVFSRC dump:"
+    cat /sys/kernel/helio-dvfsrc/dvfsrc_dump 2>/dev/null
+    echo "DVFSRC OPP table:"
+    cat /sys/kernel/helio-dvfsrc/dvfsrc_opp_table 2>/dev/null
+    echo "DVFSRC Vcore (regulator.3):"
+    cat /sys/class/regulator/regulator.3/microvolts 2>/dev/null
+    echo "PMIC buck_vcore (regulator.12):"
+    cat /sys/class/regulator/regulator.12/microvolts 2>/dev/null
 } > /data/local/tmp/undervolt.log 2>&1

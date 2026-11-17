@@ -1,6 +1,6 @@
 # Reverse Engineering MediaTek MT6833 DVFS & EEM Modules with Ghidra
 
-This guide documents the reverse engineering process, function signatures, struct layouts, and opcode patch offsets for `CPU_DVFS.ko`, `mtk_gpufreq_mt6833.ko`, and `mediatek_eem.ko`.
+This guide documents the reverse engineering process, function signatures, struct layouts, and opcode patch offsets for `CPU_DVFS.ko`, `mtk_gpufreq_mt6833.ko`, `mediatek_eem.ko`, `mtk-dvfsrc.ko`, `mtk-dvfsrc-regulator.ko`, and `mtk-dvfsrc-helper.ko`.
 
 ---
 
@@ -122,3 +122,103 @@ $$V_{\text{sram}} = \max\left(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{
 
 * **Load Tracking**: High OPPs maintain $V_{\text{sram}} = V_{\text{proc}} + 100.00\text{ mV}$.
 * **750.00 mV Silicon Clamp**: Prevents 6T SRAM bitcell retention failures ($V_{\text{min}}$) during low-frequency and idle operation.
+
+---
+
+## 5. DVFSRC Reverse Engineering & The 1-Instruction Clamp
+
+The Dynamic Voltage and Frequency Scaling Resource Collector (DVFSRC) subsystem consists of three kernel modules located inside the `vendor_boot` ramdisk:
+* `mtk-dvfsrc-regulator.ko`: Implements the Linux regulator framework driver for `dvfsrc-vcore`.
+* `mtk-dvfsrc.ko`: Core hardware communication driver interfacing with System Power Manager (SPM).
+* `mtk-dvfsrc-helper.ko`: Manages memory frequency and interconnect OPP tables.
+
+### 5.1 `mtk-dvfsrc-regulator.ko` Disassembly & Patch
+
+#### Function: `dvfsrc_set_voltage_sel`
+* Section: `.text`
+* Relative Offset: `+0x27c`
+* File Offset: `0x127c`
+
+In Ghidra decompilation:
+```c
+int dvfsrc_set_voltage_sel(struct regulator_dev *rdev, unsigned int selector) {
+    ...
+    // Stock passes selector directly in w2:
+    mtk_dvfsrc_send_request(dvfsrc, 2, selector);
+    ...
+}
+```
+
+At file offset `0x127c`, the stock instruction prepares argument 3 (`w2`) from `w21`:
+```aarch64
+// Stock:
+mov w2, w21        // 2a 15 03 e2
+```
+
+We patch this single instruction to clamp the selector to a maximum of 2 using the bitwise formula $\min(w, 2) = w \ \& \ \sim(w \gg 1)$:
+```aarch64
+// Patched:
+bic w2, w21, w21, lsr #1   // a2 06 75 0a (Little-Endian: 0a 75 06 a2)
+```
+
+### 5.2 `mtk-dvfsrc.ko` Disassembly & Patch
+
+#### Function: `mt6873_set_vcore_level`
+* Section: `.text`
+* Relative Offset: `+0x3760`
+* File Offset: `0x4760`
+
+In Ghidra decompilation:
+```c
+int mt6873_set_vcore_level(struct mtk_dvfsrc *dvfsrc, unsigned int level) {
+    ...
+    // Hardware write: (level << 4) written to SW_REQ register 0x1000600c
+    writel((level << 4), dvfsrc->regs + 0xc);
+    ...
+}
+```
+
+At file offset `0x4760`, the stock instruction moves argument `w1` into local variable register `w20`:
+```aarch64
+// Stock:
+mov w20, w1        // 2a 01 03 f4
+```
+
+We patch this instruction to enforce the hardware clamp before computing the bitshift:
+```aarch64
+// Patched:
+bic w20, w1, w1, lsr #1    // 34 04 61 0a (Little-Endian: 0a 61 04 34)
+```
+
+### 5.3 `mtk-dvfsrc-helper.ko` Table Clamping
+
+#### Table: `dvfsrc_opp_mt6833_lp4`
+* Section: `.data`
+* File Offset: `0xeb90`
+* Entry Size: 24 bytes
+
+The table defines 25 interconnect operating points (OPP 0 through OPP 24). OPPs 0 through 7 are configured for Level 3 (725.00 mV):
+```c
+struct dvfsrc_opp {
+    uint32_t ddr_khz;      // Memory clock (e.g. 4266000, 3200000)
+    uint32_t vcore_level;  // Vcore level index (0, 1, 2, 3)
+    uint32_t flags;
+    ...
+};
+```
+
+At file offset `0xeb90`, each entry has `vcore_level` at offset `+0x04`:
+* Entries 0..7: Byte `0x03` at offsets `0xeb94, 0xebac, 0xebc4, 0xebdc, 0xebf4, 0xec0c, 0xec24, 0xec3c`.
+* Patched: Each byte modified from `0x03` (Level 3 / 725 mV) to `0x02` (Level 2 / 650 mV).
+
+### 5.4 Verification of Mathematical Equivalence
+The 1-instruction clamp `bic Rd, Rn, Rn, lsr #1` computes:
+$$\text{result} = R_n \ \& \ \sim(R_n \gg 1)$$
+
+For all 2-bit unsigned inputs:
+* $R_n = 0$ (`0b00`): $0 \ \& \ \sim(0) = 0$ (Level 0 / 550.00 mV)
+* $R_n = 1$ (`0b01`): $1 \ \& \ \sim(0) = 1$ (Level 1 / 600.00 mV)
+* $R_n = 2$ (`0b10`): $2 \ \& \ \sim(1) = 2$ (Level 2 / 650.00 mV)
+* $R_n = 3$ (`0b11`): $3 \ \& \ \sim(1) = 2$ (Level 3 clamped to Level 2 / 650.00 mV)
+
+This achieves exact mathematical capping in a single 4-byte instruction without modifying branch predictors, condition flags, or requiring trampoline hooks.
