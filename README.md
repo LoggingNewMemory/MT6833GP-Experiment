@@ -2,8 +2,8 @@
 
 [![Target: MT6833](https://img.shields.io/badge/SoC-Dimensity%206080%20%2F%20MT6833-blue.svg)](https://en.wikipedia.org/wiki/MediaTek)
 [![Root: KernelSU](https://img.shields.io/badge/Root-KernelSU%20%2F%20SukiSU%20Preinit-green.svg)](https://github.com/tiann/KernelSU)
-[![GPU: Mali-G57 MC2](https://img.shields.io/badge/GPU-Mali--G57%20MC2%20(-37.50mV)-orange.svg)](https://developer.arm.com/Processors/Mali-G57)
-[![CPU: Cortex-A76/A55](https://img.shields.io/badge/CPU-A76%2FA55%20(-43.75mV)-red.svg)](https://developer.arm.com/)
+[![GPU: Mali-G57 MC2](https://img.shields.io/badge/GPU-Mali--G57%20MC2%20%28--37.50mV%29-orange.svg)](https://developer.arm.com/Processors/Mali-G57)
+[![CPU: Cortex-A76/A55](https://img.shields.io/badge/CPU-Cortex--A76%2FA55%20%28--43.75mV%29-red.svg)](https://developer.arm.com/)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-lightgrey.svg)](LICENSE)
 
 An open-source hardware reverse engineering and systems research project documenting the dynamic voltage and frequency scaling (DVFS) architecture, Energy Estimation Model (EEM) runtime mechanisms, and MT6359 Power Management IC (PMIC) cross-wiring on the MediaTek MT6833 platform (Dimensity 6080, Dimensity 810, Dimensity 700), validated on the TECNO Pova 5 Pro 5G (LH8n).
