@@ -1,0 +1,10 @@
+# Build artifacts
+out/
+*.zip
+*.ko
+*.pyc
+__pycache__/
+
+# Stock driver dumps (do not commit proprietary OEM binaries)
+stock/*.ko
+!stock/.gitkeep
