@@ -4,7 +4,7 @@
 [![Root: KernelSU-Next Pre-Init](https://img.shields.io/badge/Root-KernelSU--Next%20Pre--Init-green.svg)](https://github.com/KernelSU-Next/KernelSU-Next)
 [![GPU: Mali-G57 MC2](https://img.shields.io/badge/GPU-Mali--G57%20MC2-orange.svg)](https://developer.arm.com/Processors/Mali-G57)
 [![CPU: Cortex-A76/A55](https://img.shields.io/badge/CPU-Cortex--A76%2FA55-red.svg)](https://developer.arm.com/)
-[![Version: v2.3](https://img.shields.io/badge/Release-v2.3%20Triple%20Undervolt%20%26%20PPM%20Tuning-success.svg)](https://github.com/LoggingNewMemory/MT6833GP-Experiment)
+[![Version: v2.4](https://img.shields.io/badge/Release-v2.4%20Triple%20Undervolt%20%26%20Dynamic%20PowerHAL-success.svg)](https://github.com/LoggingNewMemory/MT6833GP-Experiment)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-lightgrey.svg)](LICENSE)
 
 An open-source hardware reverse engineering and systems research project documenting the dynamic voltage and frequency scaling (DVFS) architecture, Energy Estimation Model (EEM) runtime mechanisms, DVFSRC interconnect arbitration, and MT6359 Power Management IC (PMIC) cross-wiring on the MediaTek MT6833 platform (Dimensity 6080, Dimensity 810, Dimensity 700), validated on the TECNO Pova 5 Pro 5G (LH8n).
@@ -35,8 +35,8 @@ Through static binary reverse engineering in Ghidra and live kernel debugging vi
 3. **Mali-G57 MC2 GPU Undervolt**: A verified **-50.00 mV** aggressive undervolt across high/mid GPU operating points (OPP 0: 800.00 mV @ 1068 MHz), while strictly adhering to the mandatory $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$ hardware constraint.
 4. **DVFSRC Vcore -75.00 mV Capped Voltage (v2.1 Profile)**: Resolved the dynamic 120Hz display refresh rate (`dispsys_config`) and regulator consumer override by clamping DVFSRC Vcore requests from Level 3 (725.00 mV) down to Level 2 (650.00 mV) via an atomic 1-instruction ARM64 bitwise clamp (`bic Rd, Rn, Rn, lsr #1`).
 5. **Calibrated EAS Energy Model (`Upower.ko`, v2.2 Profile)**: Reverse-engineered MediaTek Unified Power (`Upower.ko`), scaling static dynamic power curves by the physical CMOS equation $P \propto V^2$, scaling 200 MHz floor idle power down ~60% (17,036 uW -> 7,083 uW), calibrating EAS migration `turn_point` to OPP 2 (500 MHz) reflecting the 200 MHz Big core underclock floor (confirmed via `/proc/upower/upower_debug`), and disarming `upower_update_volt_by_eem` to protect calibrated power models from eFuse overwrite.
-6. **PPM Policy Arbitration & Dynamic PowerHAL Tuning (v2.3 Profile)**: Resolved aggressive touch-boost battery drain via an autonomous native AArch64 JSON patcher (`patch_powerhint`) running at early `post-fs-data`. Dynamically reads the installed ROM's `/vendor/etc/powerhint.json` to eliminate Mali-G57 GPU level 0 (1068 MHz) spiking and Cortex-A76 Big core 1.44 GHz clamps while preserving 100% of ROM maintainer custom hints across updates. Re-tuned Little cluster interaction boost to 100 ms @ 703 MHz (-50.00 mV @ 637.50 mV, 24.8 mW dynamic power), aligned Cobra multi-cluster power budgets (293 mW floor to 2479 mW peak), and integrated `PPM_POLICY_LCM_OFF` (Policy 8) locking Little cores to the 200 MHz floor during screen-off sleep.
-7. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.3.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU, GPU, and Upower modules, complete with automated stock backup and uninstall restoration.
+6. **PPM Policy Arbitration & Dynamic PowerHAL Tuning (v2.4 Profile)**: Resolved aggressive touch-boost battery drain via an autonomous native AArch64 JSON patcher (`patch_powerhint`) running at early `post-fs-data`. Dynamically reads the installed ROM's `/vendor/etc/powerhint.json` to eliminate Mali-G57 GPU level 0 (1068 MHz) spiking and Cortex-A76 Big core 1.44 GHz clamps while preserving 100% of ROM maintainer custom hints across updates. Re-tuned Little cluster interaction boost to 100 ms @ 703 MHz (-50.00 mV @ 637.50 mV, 24.8 mW dynamic power), aligned Cobra multi-cluster power budgets (293 mW floor to 2479 mW peak), and integrated `PPM_POLICY_LCM_OFF` (Policy 8) locking Little cores to the 200 MHz floor during screen-off sleep.
+7. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.4.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU, GPU, and Upower modules, complete with automated stock backup and uninstall restoration.
 8. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
 9. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
 10. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula $V_{\text{sram}} = \max(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV})$, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
@@ -495,10 +495,10 @@ adb pull /vendor/lib/modules/Upower.ko stock/
 ```bash
 ./build.sh
 ```
-This executes all Python patchers, packages preinit and `magiskboot` partition patchers, and produces `out/LH8nUnderVolt_v2.3.zip`.
+This executes all Python patchers, packages preinit and `magiskboot` partition patchers, and produces `out/LH8nUnderVolt_v2.4.zip`.
 
 ### Step 3: Flash and Monitor
-1. Install `out/LH8nUnderVolt_v2.3.zip` using KernelSU Manager.
+1. Install `out/LH8nUnderVolt_v2.4.zip` using KernelSU Manager.
 2. Reboot the device.
 3. Verify live operation via root terminal:
    ```bash
