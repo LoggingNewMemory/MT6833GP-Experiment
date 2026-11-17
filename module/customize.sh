@@ -1,8 +1,8 @@
 #!/system/bin/sh
 
 ui_print "- Installing TECNO LH8n Triple UnderVolt & UnderClock"
-ui_print "- Version: v2.1"
-ui_print "- Targets: CPU (-50mV), GPU (-50mV), DVFSRC Vcore (-75mV)"
+ui_print "- Version: v2.2"
+ui_print "- Targets: CPU (-50mV), GPU (-50mV), DVFSRC Vcore (-75mV), EAS/PPM Model"
 ui_print "- Author: Kana Wesley Yamada"
 
 # 1. Check root environment (Preinit requires KernelSU or SukiSU)
@@ -59,6 +59,10 @@ fi
 
 if [ -f "$MODPATH/preinit/kmod/mtk_gpufreq_mt6833.ko" ]; then
     cp "$MODPATH/preinit/kmod/mtk_gpufreq_mt6833.ko" /metadata/vold/ksu/preinit/lh8n_undervolt/kmod/mtk_gpufreq_mt6833.ko
+fi
+
+if [ -f "$MODPATH/preinit/kmod/Upower.ko" ]; then
+    cp "$MODPATH/preinit/kmod/Upower.ko" /metadata/vold/ksu/preinit/lh8n_undervolt/kmod/Upower.ko
 fi
 
 if [ -f "$MODPATH/preinit/preinit.conf" ]; then
@@ -141,6 +145,7 @@ if [ -e "$VB_DEV" ] && [ -x "$MAGISKBOOT" ] && [ -f "$MODPATH/kmod/mtk-dvfsrc.ko
         if [ -f "new-boot.img" ] && [ $(stat -c%s new-boot.img 2>/dev/null || echo 0) -gt 10000000 ]; then
             ui_print "- Writing patched vendor_boot to $VB_DEV..."
             dd if=new-boot.img of="$VB_DEV" bs=1M 2>/dev/null
+            sync; sync; sync
             ui_print "- DVFSRC Vcore successfully patched to 650.00 mV (-75.00 mV)!"
         else
             ui_print "! Warning: Repacked boot image check failed. vendor_boot untouched."

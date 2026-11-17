@@ -222,3 +222,167 @@ For all 2-bit unsigned inputs:
 * $R_n = 3$ (`0b11`): $3 \ \& \ \sim(1) = 2$ (Level 3 clamped to Level 2 / 650.00 mV)
 
 This achieves exact mathematical capping in a single 4-byte instruction without modifying branch predictors, condition flags, or requiring trampoline hooks.
+
+---
+
+## 6. `Upower.ko` Reverse Engineering (EAS Energy Model & PPM)
+
+### 6.1 Binary Layout & Key Structs
+* Architecture: ELF 64-bit LSB relocatable, ARM aarch64
+* Section `.text`: File Offset `0x00001000`, Size `0x000014c8`
+* Section `.data`: File Offset `0x00002548`, Size `0x00004238`
+
+Each table entry inside `.data` consists of 48 bytes (`12 x uint32_t`):
+```c
+struct upower_opp_entry {
+    uint32_t cap;           // Capacity index (e.g. 147 floor, 356 max Little, 1024 max Big)
+    uint32_t reserved0;     // 0
+    uint32_t volt_10uv;     // Voltage in 10 uV units (e.g. 100000 = 1000.00 mV)
+    uint32_t dyn_power_uw;  // Dynamic power in microwatts (uW)
+    uint32_t efficiency;    // Calculated power efficiency ((dyn + lkg) / cap)
+    uint32_t lkg_power[6];  // Leakage power array across 6 temperature points
+    uint32_t reserved1;     // 0
+};
+```
+
+Following the 16 OPP entries ($16 \times 48 = 768 = \text{0x300}$ bytes), each table includes metadata tail fields ($120\text{ bytes} = \text{0x78}$):
+* `+0x300`: `col_num` (Cluster core count / columns, default: 4)
+* `+0x304`: `row_num` (OPP count, default: 16)
+* `+0x308`: `min_eff` (Minimum cluster efficiency across OPPs)
+* `+0x30c`: `max_eff` (Maximum cluster efficiency across OPPs)
+* `+0x374`: `turn_point` (Little cluster OPP threshold for task migration to Big cluster)
+
+### 6.2 Table Symbol Addresses & File Offsets
+The module contains static definitions for 3 hardware CPU bin revisions (`FY`, `B20G`, `B24G`):
+
+```
++----------------------------+-------------+---------------+------------+
+| Symbol Name                | Section VMA | File Offset   | Size       |
++----------------------------+-------------+---------------+------------+
+| upower_tbl_l_FY            | .data+0x01a8| 0x000026f0    | 888 bytes  |
+| upower_tbl_b_FY            | .data+0x0520| 0x00002a68    | 888 bytes  |
+| upower_tbl_cluster_l_FY    | .data+0x0898| 0x00002de0    | 888 bytes  |
+| upower_tbl_cluster_b_FY    | .data+0x0c10| 0x00003158    | 888 bytes  |
+| upower_tbl_cci_FY          | .data+0x0f88| 0x000034d0    | 888 bytes  |
++----------------------------+-------------+---------------+------------+
+| upower_tbl_l_B20G          | .data+0x1300| 0x00003848    | 888 bytes  |
+| upower_tbl_b_B20G          | .data+0x1678| 0x00003bc0    | 888 bytes  |
+| upower_tbl_cluster_l_B20G  | .data+0x19f0| 0x00003f38    | 888 bytes  |
+| upower_tbl_cluster_b_B20G  | .data+0x1d68| 0x000042b0    | 888 bytes  |
+| upower_tbl_cci_B20G        | .data+0x20e0| 0x00004628    | 888 bytes  |
++----------------------------+-------------+---------------+------------+
+| upower_tbl_l_B24G          | .data+0x2458| 0x000049a0    | 888 bytes  |
+| upower_tbl_b_B24G          | .data+0x27d0| 0x00004d18    | 888 bytes  |
+| upower_tbl_cluster_l_B24G  | .data+0x2b48| 0x00005090    | 888 bytes  |
+| upower_tbl_cluster_b_B24G  | .data+0x2ec0| 0x00005408    | 888 bytes  |
+| upower_tbl_cci_B24G        | .data+0x3238| 0x00005780    | 888 bytes  |
++----------------------------+-------------+---------------+------------+
+```
+
+### 6.3 Disassembly of Key Energy Model Functions
+
+#### 1. Dynamic Power Calculation (`upower_update_dyn_pwr` at `.text + 0x022c`, File Offset: `0x122c`)
+```aarch64
+0x248: add  x13, x11, x10         // Table entry pointer
+0x24c: ldp  w13, w14, [x13, #0x8] // w13 = ref_volt, w14 = ref_dyn
+0x250: add  x12, x12, x10         // Runtime table pointer
+0x254: ldr  w15, [x12, #0x8]      // w15 = curr_volt
+0x258: add  x10, x10, #0x30       // Entry stride (48 bytes)
+0x25c: mul  x13, x13, x13         // x13 = ref_volt^2
+0x264: mul  x14, x15, x14         // x14 = ref_dyn * curr_volt
+0x268: mul  x14, x14, x15         // x14 = ref_dyn * curr_volt^2
+0x26c: udiv x13, x14, x13         // x13 = (ref_dyn * curr_volt^2) / ref_volt^2
+0x270: str  w13, [x12, #0xc]      // Store updated dyn_power
+```
+This confirms physical dynamic power scaling:
+$$P_{\text{dyn}} = P_{\text{dyn\_ref}} \times \frac{V_{\text{curr}}^2}{V_{\text{ref}}^2}$$
+
+#### 2. Efficiency Calculation & Turn Point (`upower_update_tables_by_eem` at `.text + 0x0d14`, File Offset: `0x1d14`)
+```aarch64
+0xd44: ldr  w14, [x9, #0x14]      // w14 = lkg_power
+0xd48: ldr  w15, [x9, #0xc]       // w15 = dyn_power
+0xd4c: ldr  x16, [x9]             // x16 = cap
+0xd54: add  w14, w15, w14         // total_power = dyn + lkg
+0xd58: udiv x14, x14, x16         // eff = total_power / cap
+0xd70: str  w14, [x9, #0x10]      // Store eff
+0xdd8: bl   upower_cal_turn_point // Recalculate scheduler migration turn point
+```
+
+#### 3. Scheduler Turn Point Algorithm (`upower_cal_turn_point` at `.text + 0x07f8`, File Offset: `0x17f8`)
+`upower_cal_turn_point()` determines the capacity crossover threshold where tasks transition between Little and Big clusters:
+```aarch64
+0x7f8: paciasp
+0x800: ldr   x8, [x8]              // x8 = p_upower_tbl_infos
+0x804: ldr   w9, [x8, #0x684]      // w9 = min_eff of Big cluster (stored at Bank L + 0x30c)
+0x808: ldr   w10, [x8, #0x2e0]     // Little OPP 15 eff
+0x80c: cmp   w10, w9
+0x810: b.ls  0x8d4                 // Match OPP 15 (turn_point = 16)
+...
+0x8b0: ldr   w10, [x8, #0x40]      // Little OPP 1 eff
+0x8b4: cmp   w10, w9
+0x8b8: b.ls  0x944                 // Match OPP 1 (turn_point = 2)
+0x8bc: ldr   w10, [x8, #0x10]      // Little OPP 0 eff
+0x8c0: cmp   w10, w9
+0x8c4: b.ls  0x94c                 // Match OPP 0 (turn_point = 1)
+...
+0x950: add   w9, w0, #0x1          // turn_point = matched_index + 1
+0x954: str   w9, [x8, #0x6ec]      // Store in Big cluster table (+0x374)
+0x958: str   w9, [x8, #0x374]      // Store in Little cluster table (+0x374)
+0x95c: autiasp
+0x960: ret
+```
+The routine scans Little cluster OPPs top-down ($15 \to 0$), selecting the first OPP whose efficiency satisfies $\text{eff}_{\text{Little}} \le \text{min\_eff}_{\text{Big}}$.
+
+#### 4. EEM Overwrite Disarm & The ELF Relocation Collision Hazard
+
+##### The Initial Bug & Kernel Panic Post-Mortem
+In the initial v2.2 build, `upower_update_volt_by_eem` was stubbed with a standard 16-byte ARM64 PAC/BTI zero-return sequence:
+```aarch64
+0x0b1c: paciasp      // 3f 23 03 d5 (ARM64 Pointer Authentication & BTI landing pad)
+0x0b20: mov w0, wzr  // e0 03 1f 2a (Return 0 / success)
+0x0b24: autiasp      // bf 23 03 d5 (Authenticate return address)
+0x0b28: ret          // c0 03 5f d6 (Clean return)
+```
+
+Upon flashing and rebooting, the device dropped into Fastboot mode due to an immediate kernel panic during early module initialization:
+```
+[    8.683908][T400390] ------------[ cut here ]------------
+[    8.684946][T400390] kernel BUG at arch/arm64/kernel/traps.c:410!
+[    8.685718][T400390] Internal error: Oops - BUG: 0 [#1] PREEMPT SMP
+...
+[    8.931631][T400390]  do_undefinstr+0xa4/0xa8
+[    8.932191][T400390]  el1_undef+0x30/0x50
+[    8.932703][T400390]  el1_sync_handler+0x58/0x8c
+[    8.933287][T400390]  el1_sync+0x8c/0x140
+[    8.933810][T400390]  upower_update_volt_by_eem+0xc/0x1f8 [Upower]
+[    8.940693][T400390]  init_module+0x788/0x890 [mediatek_eem]
+```
+
+##### Root Cause Analysis
+Disassembly and ELF relocation inspection revealed that relocatable kernel modules (`.ko`) contain active relocation records in `.rela.text.upower_update_dyn_pwr`:
+```
+0000000000000b28  000000c200000113 R_AARCH64_ADR_PREL_PG_HI21 00000000000035c8 upower_recognize_by_eem + 0
+0000000000000b2c  000000c200000116 R_AARCH64_LDST8_ABS_LO12_NC 00000000000035c8 upower_recognize_by_eem + 0
+```
+- Offset `0x0b28` corresponded exactly to `upower_update_volt_by_eem + 0xc` (the `ret` instruction in the 16-byte stub).
+- When the Linux kernel module loader invoked `apply_relocate_add()`, it processed relocation record `0x0b28`, calculating the relative page offset to `upower_recognize_by_eem` and **overwriting the `ret` opcode with an `adrp x8, ...` instruction**.
+- As a result, when `mediatek_eem.ko` called `upower_update_volt_by_eem`, execution fell through the clobbered `ret` into partially modified instructions without a valid stack frame or epilogue, immediately triggering an undefined instruction exception (`do_undefinstr`).
+
+##### The Permanent Resolution
+1. **Compact 12-Byte Epilogue Termination**:
+   Because `upower_update_volt_by_eem` is a void function (as confirmed by the stock `b.hi 0xd08` check which branches directly to `autiasp; ret`), the `mov w0, wzr` instruction is unnecessary. The function stub is compacted to 12 bytes:
+   ```aarch64
+   0x0b1c: paciasp  // 3f 23 03 d5 (BTI / PAC sign)
+   0x0b20: autiasp  // bf 23 03 d5 (BTI / PAC authenticate)
+   0x0b24: ret      // c0 03 5f d6 (Return cleanly before offset 0x0b28)
+   ```
+   This ensures the `ret` instruction executes at `0x0b24`, strictly before the `0x0b28` relocation boundary.
+
+2. **ELF Relocation Disarming (`R_AARCH64_NONE`)**:
+   In addition to compacting the stub, [`patch_upower.py`](file:///home/yamada/CODE/MT6833GP-Experiment/scripts/patch_upower.py) programmatically parses all `SHT_RELA` relocation sections in the ELF binary and converts every relocation targeting the interior of the disarmed functions to `R_AARCH64_NONE` (relocation type 0):
+   - `upower_update_volt_by_eem` (`0x0b1c` - `0x0d14`): 29 relocations cleared
+   - `upower_update_tables_by_eem` (`0x0d14` - `0x0dec`): 6 relocations cleared
+   - Total relocations neutralized: 35
+
+3. **Storage Sync**:
+   `customize.sh` was augmented with explicit kernel page cache flushes (`sync; sync; sync`) immediately after bare-metal partition writes to prevent dirty block writeback truncation during automated reboots.

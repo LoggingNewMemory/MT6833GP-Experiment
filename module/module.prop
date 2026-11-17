@@ -1,6 +1,6 @@
 id=lh8n_undervolt
-name=TECNO LH8n Triple UnderVolt & UnderClock
-version=v2.1
-versionCode=21
+name=TECNO LH8n Triple UnderVolt & EAS Energy Model
+version=v2.2
+versionCode=22
 author=Kana Wesley Yamada
-description=All-in-One bare-metal undervolt: CPU (-50mV, 200MHz floor), GPU (-50mV, 1068MHz@800mV), and DVFSRC Vcore (OPP 0 capped at 650mV / -75mV via hardware & regulator clamp). Includes automatic vendor_boot backup and restore.
+description=All-in-One bare-metal undervolt: CPU (-50mV, 200MHz floor), GPU (-50mV, 1068MHz@800mV), DVFSRC Vcore (OPP 0 capped at 650mV / -75mV), and Calibrated EAS/PPM Energy Model (Upower.ko -50mV power curves & EEM disarm). Includes automatic vendor_boot backup and restore.

@@ -188,13 +188,27 @@ echo "[ Module & Thermal Health ]"
 echo "-----------------------------------------------------------------"
 dvfs_md5=$(md5sum /vendor/lib/modules/CPU_DVFS.ko 2>/dev/null | awk '{print $1}')
 gpu_md5=$(md5sum /vendor/lib/modules/mtk_gpufreq_mt6833.ko 2>/dev/null | awk '{print $1}')
+upower_md5=$(md5sum /vendor/lib/modules/Upower.ko 2>/dev/null | awk '{print $1}')
 
 echo "  CPU_DVFS.ko MD5 : ${dvfs_md5:-Not Loaded}"
 echo "  GPU_DVFS.ko MD5 : ${gpu_md5:-Not Loaded}"
+echo "  Upower.ko MD5   : ${upower_md5:-Not Loaded}"
 
 soc_temp=$(cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null || echo 0)
 batt_temp=$(cat /sys/class/power_supply/battery/temp 2>/dev/null || echo 0)
 printf "  SoC Temp        : %d.%d C\n" "$(( soc_temp / 1000 ))" "$(( (soc_temp % 1000) / 100 ))"
 printf "  Battery Temp    : %d.%d C\n" "$(( batt_temp / 10 ))" "$(( batt_temp % 10 ))"
+
+# --- 7. Upower EAS & PPM Energy Model ---
+echo ""
+echo "[ Upower EAS & PPM Energy Model ]"
+echo "-----------------------------------------------------------------"
+if [ -f /proc/upower/upower_debug ]; then
+    tp_val=$(grep "turn_point" /proc/upower/upower_debug 2>/dev/null | head -n 1 | awk '{print $NF}')
+    echo "  Little Turn Point: ${tp_val:-N/A} (OPP migration threshold)"
+    echo "  Live Power Curves: Active (/proc/upower/upower_debug)"
+else
+    echo "  Upower Procfs    : Not active or Upower not loaded"
+fi
 
 echo "================================================================="

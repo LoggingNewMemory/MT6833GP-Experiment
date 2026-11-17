@@ -38,9 +38,22 @@ python3 "${SCRIPT_DIR}/scripts/patch_gpufreq.py" \
 # Step 2.5: Optional DVFSRC modules patch
 if [ -d "${STOCK_DIR}/dvfsrc_modules" ] && [ -f "${STOCK_DIR}/dvfsrc_modules/mtk-dvfsrc.ko" ]; then
     echo "[*] Step 2.5: Patching DVFSRC ramdisk modules (650.00mV cap)..."
-    python3 "${SCRIPT_DIR}/scripts/patch_dvfsrc.py" \
-        -d "${STOCK_DIR}/dvfsrc_modules" \
-        -o "${OUT_DIR}/dvfsrc_modules"
+    mkdir -p "${OUT_DIR}/dvfsrc_modules"
+    for mod in mtk-dvfsrc.ko mtk-dvfsrc-regulator.ko mtk-dvfsrc-helper.ko; do
+        if [ -f "${STOCK_DIR}/dvfsrc_modules/${mod}" ]; then
+            python3 "${SCRIPT_DIR}/scripts/patch_dvfsrc.py" \
+                -i "${STOCK_DIR}/dvfsrc_modules/${mod}" \
+                -o "${OUT_DIR}/dvfsrc_modules/${mod}"
+        fi
+    done
+fi
+
+# Step 2.7: EAS Energy Model & PPM Power Policy patch
+if [ -f "${STOCK_DIR}/Upower.ko" ]; then
+    echo "[*] Step 2.7: Patching Upower.ko (EAS energy model & PPM calibration)..."
+    python3 "${SCRIPT_DIR}/scripts/patch_upower.py" \
+        -i "${STOCK_DIR}/Upower.ko" \
+        -o "${OUT_DIR}/Upower.ko"
 fi
 
 echo "[*] Step 3: Preparing module payload..."
@@ -61,6 +74,12 @@ cp "${OUT_DIR}/CPU_DVFS.ko" "${TEMP_MODULE}/preinit/kmod/"
 cp "${OUT_DIR}/mtk_gpufreq_mt6833.ko" "${TEMP_MODULE}/vendor/lib/modules/"
 cp "${OUT_DIR}/mtk_gpufreq_mt6833.ko" "${TEMP_MODULE}/system/vendor/lib/modules/"
 cp "${OUT_DIR}/mtk_gpufreq_mt6833.ko" "${TEMP_MODULE}/preinit/kmod/"
+
+if [ -f "${OUT_DIR}/Upower.ko" ]; then
+    cp "${OUT_DIR}/Upower.ko" "${TEMP_MODULE}/vendor/lib/modules/"
+    cp "${OUT_DIR}/Upower.ko" "${TEMP_MODULE}/system/vendor/lib/modules/"
+    cp "${OUT_DIR}/Upower.ko" "${TEMP_MODULE}/preinit/kmod/"
+fi
 
 if [ -d "${OUT_DIR}/dvfsrc_modules" ]; then
     cp "${OUT_DIR}/dvfsrc_modules/"*.ko "${TEMP_MODULE}/kmod/"

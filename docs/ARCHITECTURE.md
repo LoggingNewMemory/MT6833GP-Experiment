@@ -142,3 +142,85 @@ The installer implements automated bare-metal partition patching directly on the
 4. Injects the patched DVFSRC kernel modules into `lib/modules/`.
 5. Repacks the partition image and writes it directly to `/dev/block/by-name/vendor_boot`.
 6. An uninstaller script (`uninstall.sh`) automatically restores the stock partition block upon module removal.
+
+---
+
+## 6. Calibrated EAS Energy Model & PPM Power Policy Architecture (`Upower.ko`)
+
+### 6.1 The Energy Disconnect in Stock Linux Schedutil / EAS
+The Linux Energy Aware Scheduling (EAS) framework and MediaTek Power Policy Manager (PPM) optimize task placement and energy consumption across asymmetric CPU clusters:
+1. **Schedutil Governor (`cpufreq_sugov_ext.ko`)**: Calls `upower_get_core_tbl()` during `init_capacity_table()` to query compute capacity and power efficiency curves.
+2. **MediaTek PPM (`mtk_ppm_v3.ko`)**: Calls `upower_get_power()` during `ppm_calc_total_power()` and `ppm_cobra_init()` to dynamically enforce thermal envelopes and Cobra cluster power budgets.
+
+In the uncalibrated stock system, `Upower.ko` creates an energy disconnect:
+* `Upower.ko` contains static lookup tables (`upower_tbl_l_*`, `upower_tbl_b_*`, `upower_tbl_cci_*`) hardcoded with stock nominal voltages ($1000.00\text{ mV}$ Little OPP 15, $1050.00\text{ mV}$ Big OPP 15, $650.00\text{ mV}$ floor).
+* Shortly after boot, `mediatek_eem.ko` invokes `upower_update_volt_by_eem()`, overwriting the tables with stock factory eFuse voltages.
+* Schedutil and PPM evaluate power efficiency based on stock power curves ($10\%\text{--}20\%$ higher than our real physical power consumption).
+* Schedutil computes `turn_point = 7` ($1048\text{ MHz}$), prematurely migrating lightweight background tasks to the power-hungry Cortex-A76 Big cluster.
+
+### 6.2 Upower Calibration Architecture
+We patch `Upower.ko` across four key dimensions:
+
+```
++------------------------------------------------------------------------------------+
+|                                    Upower.ko                                       |
++------------------------------------------------------------------------------------+
+| 1. Static Tables Calibration:                                                      |
+|    - Little (upower_tbl_l_*):      581.25 mV (200 MHz) .. 950.00 mV (2000 MHz)      |
+|    - Big    (upower_tbl_b_*):      581.25 mV (200 MHz) .. 1000.00 mV (2400 MHz)     |
+|    - CCI    (upower_tbl_cci_*):    618.75 mV (450 MHz) .. 962.50 mV (1600 MHz)     |
+|    - Cluster Tables (cluster_*):   Voltages updated, dyn = 0                        |
++------------------------------------------------------------------------------------+
+| 2. Dynamic Power Recalculation (Physical CMOS Scaling):                            |
+|    P_dyn_new = P_dyn_stock * (V_patched / V_stock)^2                               |
++------------------------------------------------------------------------------------+
+| 3. Underclock Floor Energy Calibration (200 MHz OPP 0):                            |
+|    P_dyn(200MHz) = P_dyn(500MHz) * (200/500) * (581.25/593.75)^2                  |
+|    - Little OPP 0 power drops from 17,036 uW down to 7,083 uW (~60% idle savings)  |
++------------------------------------------------------------------------------------+
+| 4. Disarming mediatek_eem Runtime Overwrite:                                       |
+|    - upower_update_volt_by_eem @ 0x1b1c stubbed with 12-byte PAC/BTI return         |
+|    - upower_update_tables_by_eem @ 0x1d14 stubbed with 12-byte PAC/BTI return       |
+|    - 35 ELF relocations neutralized to R_AARCH64_NONE to prevent loader corruption  |
++------------------------------------------------------------------------------------+
+```
+
+### 6.3 Scheduler Turn Point & Efficiency Impact
+Inside `Upower.ko`, `get_L_pwr_efficiency()`, `get_LL_pwr_efficiency()`, and `upower_cal_turn_point()` compute task migration thresholds:
+$$\text{Efficiency} = \frac{P_{\text{total}}}{\text{Capacity}} = \frac{P_{\text{dyn}} + P_{\text{lkg}}}{\text{Capacity}}$$
+
+In `upower_cal_turn_point()`, the kernel compares Little cluster efficiency against the Big cluster's minimum efficiency point ($\text{min\_eff}_{\text{Big}}$), scanning Little OPPs from index 15 down to 0:
+```c
+min_eff = get_L_min_efficiency(); // Minimum efficiency across Big cluster OPPs
+for (i = 15; i >= 0; i--) {
+    if (eff_LL[i] <= min_eff) {
+        turn_point = i + 1;
+        break;
+    }
+}
+```
+
+* **Stock Turn Point Evaluation**:
+  - Stock lowest Big OPP was 500 MHz ($P_{\text{dyn}} = 88,853\ \mu\text{W}$, $P_{\text{lkg0}} = 103,988\ \mu\text{W}$, $\text{cap} = 611$): $\text{min\_eff} = \frac{88853 + 103988}{611} = 315$.
+  - Little OPP 6 ($1048\text{ MHz}$): $\text{eff} = 311 \le 315$.
+  - Little OPP 7 ($1128\text{ MHz}$): $\text{eff} = 321 > 315$.
+  - Result: $\text{turn\_point} = 6 + 1 = 7$ ($1048\text{ MHz}$).
+
+* **Calibrated Undervolt & 200 MHz Underclock Floor Evaluation**:
+  - Unlocking the 200 MHz underclock floor on Big cores reduces Big OPP 0 dynamic power by **-62.9%** (down to $32,928\ \mu\text{W}$ @ 581.25 mV).
+  - Under live operating conditions with thermal leakage scaling (Leakage Index 4 in `/proc/upower/upower_debug`):
+    - Big OPP 0 ($200\text{ MHz}$): $P_{\text{dyn}} = 32,928\ \mu\text{W}$, $P_{\text{lkg}} = 175,000\ \mu\text{W}$, $\text{cap} = 611 \implies \text{eff} = \frac{32928 + 175000}{611} = 340$.
+    - Big OPP 1 ($500\text{ MHz}$): $P_{\text{dyn}} = 85,900\ \mu\text{W}$, $P_{\text{lkg}} = 175,000\ \mu\text{W}$, $\text{cap} = 667 \implies \text{eff} = \frac{85900 + 175000}{667} = 391$.
+    - Big cluster minimum efficiency shifts to $\text{min\_eff} = 340$ at the 200 MHz floor *(or $\text{min\_eff} = 224$ in static tables without runtime thermal leakage updates)*.
+  - Evaluating Little cluster OPPs top-down ($15 \to 0$):
+    - Little OPP 2 ($703\text{ MHz}$): $P_{\text{dyn}} = 22,145\ \mu\text{W}$, $P_{\text{lkg}} = 46,000\ \mu\text{W}$, $\text{cap} = 193 \implies \text{eff} = 353 > 340$.
+    - Little OPP 1 ($500\text{ MHz}$): $P_{\text{dyn}} = 18,479\ \mu\text{W}$, $P_{\text{lkg}} = 43,000\ \mu\text{W}$, $\text{cap} = 181 \implies \text{eff} = 339 \le 340$ (Match).
+    - Result: $\text{turn\_point} = 1 + 1 = 2$ ($500\text{ MHz}$).
+
+* **Verified Hardware Confirmation**:
+  Live hardware reading via `/proc/upower/upower_debug`:
+  ```
+  lkg_idx, num_row, turn_point: 4, 16, 2
+  ```
+
+Because Cortex-A76 Big cores can now operate stably at an ultra-low-power 200 MHz floor consuming only 32.9 mW dynamic power, waking a Big core for lightweight background work incurs virtually no power penalty. EAS scheduler energy calculations correctly reflect this reality, optimizing asymmetric task arbitration between Cortex-A55 and Cortex-A76 cores.

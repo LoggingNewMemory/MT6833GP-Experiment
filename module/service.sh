@@ -45,11 +45,13 @@ done
     fi
     echo "--- Module Mounts & Checksums ---"
     mount | grep -E '/vendor/lib/modules' 2>/dev/null
-    md5sum /vendor/lib/modules/CPU_DVFS.ko /vendor/lib/modules/mtk_gpufreq_mt6833.ko 2>/dev/null
+    md5sum /vendor/lib/modules/CPU_DVFS.ko /vendor/lib/modules/mtk_gpufreq_mt6833.ko /vendor/lib/modules/Upower.ko 2>/dev/null
     echo "--- Loaded Kernel Modules (lsmod) ---"
-    lsmod | grep -E 'CPU_DVFS|mtk_gpufreq|dvfsrc' 2>/dev/null
+    lsmod | grep -E 'CPU_DVFS|mtk_gpufreq|dvfsrc|Upower' 2>/dev/null
     echo "--- Preinit Kernel Log ---"
-    dmesg 2>/dev/null | grep -E 'lh8n_undervolt|CPU_DVFS|mtk_gpufreq' | tail -n 20
+    dmesg 2>/dev/null | grep -E 'lh8n_undervolt|CPU_DVFS|mtk_gpufreq|Upower' | tail -n 25
+    echo "--- Upower EAS & PPM Energy Model ---"
+    cat /proc/upower/upower_debug 2>/dev/null
     echo "--- CPU Frequencies ---"
     echo "CPU0 available freqs:"
     cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_frequencies 2>/dev/null
@@ -84,4 +86,10 @@ done
     cat /sys/class/regulator/regulator.3/microvolts 2>/dev/null
     echo "PMIC buck_vcore (regulator.12):"
     cat /sys/class/regulator/regulator.12/microvolts 2>/dev/null
+    echo "--- Upower EAS & PPM Energy Model ---"
+    if [ -f /proc/upower/upower_debug ]; then
+        cat /proc/upower/upower_debug 2>/dev/null | head -n 40
+    else
+        echo "Upower debug interface not present"
+    fi
 } > /data/local/tmp/undervolt.log 2>&1

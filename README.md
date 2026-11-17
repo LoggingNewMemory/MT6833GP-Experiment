@@ -4,7 +4,7 @@
 [![Root: KernelSU-Next Pre-Init](https://img.shields.io/badge/Root-KernelSU--Next%20Pre--Init-green.svg)](https://github.com/KernelSU-Next/KernelSU-Next)
 [![GPU: Mali-G57 MC2](https://img.shields.io/badge/GPU-Mali--G57%20MC2-orange.svg)](https://developer.arm.com/Processors/Mali-G57)
 [![CPU: Cortex-A76/A55](https://img.shields.io/badge/CPU-Cortex--A76%2FA55-red.svg)](https://developer.arm.com/)
-[![Version: v2.1](https://img.shields.io/badge/Release-v2.1%20Triple%20Undervolt-success.svg)](https://github.com/LoggingNewMemory/MT6833GP-Experiment)
+[![Version: v2.2](https://img.shields.io/badge/Release-v2.2%20Triple%20Undervolt%20%26%20EAS-success.svg)](https://github.com/LoggingNewMemory/MT6833GP-Experiment)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-lightgrey.svg)](LICENSE)
 
 An open-source hardware reverse engineering and systems research project documenting the dynamic voltage and frequency scaling (DVFS) architecture, Energy Estimation Model (EEM) runtime mechanisms, DVFSRC interconnect arbitration, and MT6359 Power Management IC (PMIC) cross-wiring on the MediaTek MT6833 platform (Dimensity 6080, Dimensity 810, Dimensity 700), validated on the TECNO Pova 5 Pro 5G (LH8n).
@@ -34,10 +34,11 @@ Through static binary reverse engineering in Ghidra and live kernel debugging vi
 2. **Aggressive -50.00 mV CPU & Cache SRAM Undervolt (v1.8 Profile)**: A verified reduction of up to **-50.00 mV** across high-frequency operating points on both Little (OPP 0: 950.00 mV) and Big (OPP 0: 1000.00 mV) CPU clusters, dynamically tracking Cache SRAM (`vsram_proc1` & `vsram_proc2`) down to 800.00–912.50 mV.
 3. **Mali-G57 MC2 GPU Undervolt**: A verified **-50.00 mV** aggressive undervolt across high/mid GPU operating points (OPP 0: 800.00 mV @ 1068 MHz), while strictly adhering to the mandatory $\Delta(V_{\text{sram}} - V_{\text{gpu}}) \le 200.00\text{ mV}$ hardware constraint.
 4. **DVFSRC Vcore -75.00 mV Capped Voltage (v2.1 Profile)**: Resolved the dynamic 120Hz display refresh rate (`dispsys_config`) and regulator consumer override by clamping DVFSRC Vcore requests from Level 3 (725.00 mV) down to Level 2 (650.00 mV) via an atomic 1-instruction ARM64 bitwise clamp (`bic Rd, Rn, Rn, lsr #1`).
-5. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.1.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU and GPU modules, complete with automated stock backup and uninstall restoration.
-6. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
-7. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
-8. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula $V_{\text{sram}} = \max(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV})$, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
+5. **Calibrated EAS Energy Model & PPM Power Policy (`Upower.ko`, v2.2 Profile)**: Reverse-engineered MediaTek Unified Power (`Upower.ko`), scaling static dynamic power curves by the physical CMOS equation $P \propto V^2$, scaling 200 MHz floor idle power down ~60% (17,036 uW -> 7,083 uW), calibrating EAS migration `turn_point` to OPP 2 (500 MHz) reflecting the 200 MHz Big core underclock floor (confirmed via `/proc/upower/upower_debug`), and disarming `upower_update_volt_by_eem` to protect calibrated power models from eFuse overwrite.
+6. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.2.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU, GPU, and Upower modules, complete with automated stock backup and uninstall restoration.
+7. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
+8. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
+9. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula $V_{\text{sram}} = \max(750.00\text{ mV},\; V_{\text{proc}} + 100.00\text{ mV})$, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
 
 ---
 
@@ -209,6 +210,22 @@ By applying this instruction to:
    Clamped all 8 peak OPP entries from Level 3 (`0x03`) to Level 2 (`0x02`).
 
 The driver transparently accepts 725,000 uV requests without error while clamping the hardware PMIC actuation to 650.00 mV, delivering a permanent **-75.00 mV Vcore undervolt**.
+
+---
+
+### 2.8 Target #3 Reverse Engineering: EAS Energy Model & PPM Power Policy Calibration (`Upower.ko`)
+
+#### The Energy Disconnect in Stock MediaTek Firmware
+1. **Schedutil Governor (`cpufreq_sugov_ext.ko`)**: Invokes `upower_get_core_tbl()` to build capacity and power efficiency curves for task placement.
+2. **MediaTek PPM (`mtk_ppm_v3.ko`)**: Invokes `upower_get_power()` to compute cluster energy consumption and manage thermal budgets (Cobra power table).
+3. **The Disconnect**: `Upower.ko` holds hardcoded static energy tables with stock nominal voltages (1000 mV Little, 1050 mV Big, 650 mV floor). `mediatek_eem.ko` overwrites these at boot via `upower_update_volt_by_eem()`. As a result, the scheduler assumes the CPU consumes 10%–20% more energy than it physically does, computing an early `turn_point = 7` (1048 MHz) that prematurely shunts tasks onto Big cores.
+
+#### The Calibration Solution
+* **Static Tables Calibrated**: Scaled nominal voltages to match the -50.00 mV undervolt and 200 MHz underclock across Little, Big, CCI, and cluster tables.
+* **Physical Power Scaling**: Recalculated dynamic power entries via $P_{\text{dyn\_new}} = P_{\text{dyn\_stock}} \times (V_{\text{patched}} / V_{\text{stock}})^2$.
+* **200 MHz Floor Scaled**: Scaled 200 MHz OPP 0 dynamic power down to 7,083 uW (~60% lower idle power).
+* **Migration Turn Point Calibrated**: Aligned `turn_point` with the 200 MHz Big core floor (`turn_point = 2` / 500 MHz on live hardware in `/proc/upower/upower_debug`), accurately modeling the ~63% dynamic power reduction of Cortex-A76 at 200 MHz (32.9 mW vs 88.9 mW stock) for optimal EAS energy arbitration.
+* **EEM Overwrite Disarmed & Relocations Neutralized**: Stubbed `upower_update_volt_by_eem` (`0x1b1c`) and `upower_update_tables_by_eem` (`0x1d14`) with a compact 12-byte PAC/BTI return stub (`3f 23 03 d5 bf 23 03 d5 c0 03 5f d6`), terminating prior to the `0x0b28` relocation boundary. Simultaneously neutralized all 35 internal ELF relocations to `R_AARCH64_NONE` to eliminate module loader relocation overwrites and guarantee 100% boot stability.
 
 ---
 
@@ -447,7 +464,12 @@ python3 scripts/patch_dvfs.py -i stock/CPU_DVFS.ko -o module/system/vendor/lib/m
 python3 scripts/patch_gpufreq.py -i stock/mtk_gpufreq_mt6833.ko -o module/system/vendor/lib/modules/mtk_gpufreq_mt6833.ko
 
 # Patch DVFSRC ramdisk modules (capped at Level 2 / 650mV)
-python3 scripts/patch_dvfsrc.py -d stock/dvfsrc_modules -o module/kmod/
+python3 scripts/patch_dvfsrc.py -i stock/dvfsrc_modules/mtk-dvfsrc.ko -o module/kmod/mtk-dvfsrc.ko
+python3 scripts/patch_dvfsrc.py -i stock/dvfsrc_modules/mtk-dvfsrc-regulator.ko -o module/kmod/mtk-dvfsrc-regulator.ko
+python3 scripts/patch_dvfsrc.py -i stock/dvfsrc_modules/mtk-dvfsrc-helper.ko -o module/kmod/mtk-dvfsrc-helper.ko
+
+# Patch Upower EAS Energy Model and disarm EEM overwrite
+python3 scripts/patch_upower.py -i stock/Upower.ko -o module/system/vendor/lib/modules/Upower.ko
 ```
 
 ---
@@ -464,6 +486,7 @@ python3 scripts/patch_dvfsrc.py -d stock/dvfsrc_modules -o module/kmod/
 mkdir -p stock/dvfsrc_modules
 adb pull /vendor/lib/modules/CPU_DVFS.ko stock/
 adb pull /vendor/lib/modules/mtk_gpufreq_mt6833.ko stock/
+adb pull /vendor/lib/modules/Upower.ko stock/
 # Extract DVFSRC modules from vendor_boot ramdisk if building from source
 ```
 
@@ -471,10 +494,10 @@ adb pull /vendor/lib/modules/mtk_gpufreq_mt6833.ko stock/
 ```bash
 ./build.sh
 ```
-This executes all Python patchers, packages preinit and `magiskboot` partition patchers, and produces `out/LH8nUnderVolt_v2.1.zip`.
+This executes all Python patchers, packages preinit and `magiskboot` partition patchers, and produces `out/LH8nUnderVolt_v2.2.zip`.
 
 ### Step 3: Flash and Monitor
-1. Install `out/LH8nUnderVolt_v2.1.zip` using KernelSU Manager.
+1. Install `out/LH8nUnderVolt_v2.2.zip` using KernelSU Manager.
 2. Reboot the device.
 3. Verify live operation via root terminal:
    ```bash
@@ -488,13 +511,14 @@ This executes all Python patchers, packages preinit and `magiskboot` partition p
 
 ```
 ├── docs/
-│   ├── ARCHITECTURE.md          # Hardware PMIC cross-wiring and kernel subsystem design
+│   ├── ARCHITECTURE.md          # Hardware PMIC cross-wiring, DVFSRC, and EAS Upower design
 │   ├── REVERSE_ENGINEERING.md   # Ghidra disassembly, struct layouts, and patch offsets
-│   └── VOLTAGE_TABLES.md        # Full CPU, GPU, and DVFSRC Vcore voltage reference tables
+│   └── VOLTAGE_TABLES.md        # Full CPU, GPU, DVFSRC Vcore, and Upower energy tables
 ├── scripts/
 │   ├── patch_dvfs.py            # Automated CPU_DVFS.ko binary patcher
 │   ├── patch_gpufreq.py         # Automated mtk_gpufreq_mt6833.ko binary patcher
 │   ├── patch_dvfsrc.py          # Automated DVFSRC ramdisk kernel modules patcher
+│   ├── patch_upower.py          # Automated Upower.ko EAS energy model patcher
 │   └── check_voltage.sh         # Fast on-device hardware PMIC & frequency monitor
 ├── module/                      # Unified KernelSU / SukiSU module and bare-metal patcher
 ├── build.sh                     # Automated build and packaging script

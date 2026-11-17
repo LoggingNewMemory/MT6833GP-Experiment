@@ -33,6 +33,11 @@ if [ -f "$MODDIR/preinit/kmod/mtk_gpufreq_mt6833.ko" ]; then
     chmod 644 /metadata/vold/ksu/preinit/lh8n_undervolt/kmod/mtk_gpufreq_mt6833.ko
 fi
 
+if [ -f "$MODDIR/preinit/kmod/Upower.ko" ]; then
+    cp "$MODDIR/preinit/kmod/Upower.ko" /metadata/vold/ksu/preinit/lh8n_undervolt/kmod/Upower.ko
+    chmod 644 /metadata/vold/ksu/preinit/lh8n_undervolt/kmod/Upower.ko
+fi
+
 if [ -f "$MODDIR/preinit/preinit.conf" ]; then
     cp "$MODDIR/preinit/preinit.conf" /metadata/vold/ksu/preinit/lh8n_undervolt/preinit.conf
     chmod 644 /metadata/vold/ksu/preinit/lh8n_undervolt/preinit.conf
