@@ -440,21 +440,26 @@ u8 cpuhvfs_get_cci_result(int little_idx, int big_idx, int mode) {
 * **Performance Mode (`mode = 1`, 0x100–0x1ff)**: Allows uncapped interconnect scaling up to 1600 MHz OPP 0.
 
 ### 9.4 200 MHz Underclock Floor Unlock & Decoupled Matrix Clamping
+
 In stock configuration:
-* OPP 15 was clamped to 450 MHz with PLL divider parameters `a=4, b=1` ($f_{\text{VCO}} = 1800\text{ MHz}$) at 650.00 mV.
+* OPP 15 was clamped to 450 MHz with PLL divider parameters `a=4, b=1` (`f_VCO = 1800 MHz`) at 650.00 mV.
 * Both Little and Big clusters downclock to 200 MHz, but the interconnect remained pinned at 450 MHz.
 
 #### Underclock Floor Implementation
+
 By reconfiguring OPP 15 to `a=4, b=2`:
+
 $$
 f_{\text{VCO}} = 200\text{ MHz} \times 4 \times 2 = 1600\text{ MHz}
 $$
-This maintains strict compliance with the MT6833 CCIPLL lock envelope ($1500\text{ MHz} \le f_{\text{VCO}} \le 3500\text{ MHz}$) while unlocking a **200 MHz interconnect clock** operating at **581.25 mV (Step 29)**.
+
+This maintains strict compliance with the MT6833 CCIPLL lock envelope (`1500 MHz <= f_VCO <= 3500 MHz`) while unlocking a **200 MHz interconnect clock** operating at **581.25 mV (Step 29)**.
 
 #### Idle-Only Decoupling
+
 In stock `CCI_B24GTbl`, rows 11..15 and columns 11..15 all mapped to OPP 15. If OPP 15 was unconditionally lowered to 200 MHz, a Little core running at 862 MHz (OPP 11) would experience interconnect bandwidth starvation.
 
 To solve this, `scripts/patch_dvfs.py` and `module/service.sh` decouple the 16x16 matrix:
 * Rows 11..14 map to **OPP 14 (450 MHz @ 600.00 mV)**.
 * **OPP 15 (200 MHz @ 581.25 mV)** engages strictly when **both** Little and Big clusters are simultaneously at OPP 15 `(row == 15 && col == 15)`.
-* When the phone is at idle or in screen-off standby, interconnect dynamic power drops by **64.5%**. The moment any core wakes up to execute work ($\ge 500\text{ MHz}$), CCI instantaneously jumps to 450 MHz or higher with zero memory latency penalty.
+* When the phone is at idle or in screen-off standby, interconnect dynamic power drops by **64.5%**. The moment any core wakes up to execute work (`>= 500 MHz`), CCI instantaneously jumps to 450 MHz or higher with zero memory latency penalty.
