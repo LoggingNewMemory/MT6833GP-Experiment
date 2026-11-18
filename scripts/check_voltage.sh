@@ -228,4 +228,32 @@ if [ -f /proc/ppm/policy/thermal_cur_power ]; then
     echo "  Cobra Power Range: ${pwr_min:-N/A} mW .. ${pwr_max:-N/A} mW"
 fi
 
+# --- 9. GED GPU Micro-Tuning & Uclamp Policy ---
+echo ""
+echo "[ MediaTek GED & Uclamp Tuning ]"
+echo "-----------------------------------------------------------------"
+if [ -d /sys/module/ged/parameters ]; then
+    ged_boost=$(cat /sys/module/ged/parameters/enable_gpu_boost 2>/dev/null || echo N/A)
+    ged_margin=$(cat /sys/module/ged/parameters/gx_fb_dvfs_margin 2>/dev/null || echo N/A)
+    echo "  GED GPU Boost    : ${ged_boost} (0 = 2D Spikes Disabled)"
+    echo "  GED DVFS Margin  : ${ged_margin}% (Frame Headroom Buffer)"
+fi
+uclamp_sys=$(cat /dev/cpuctl/system/uclamp.min 2>/dev/null || cat /dev/cpuctl/system/cpu.uclamp.min 2>/dev/null || echo N/A)
+uclamp_min=$(cat /proc/sys/kernel/sched_util_clamp_min 2>/dev/null || echo N/A)
+echo "  Uclamp System    : ${uclamp_sys} (De-clamped from max)"
+echo "  Global Clamp Min : ${uclamp_min} (Idle Background Floor)"
+
+# --- 10. FPSGO Game Frame Pacing (BHR) ---
+echo ""
+echo "[ MediaTek FPSGO Game Pacing ]"
+echo "-----------------------------------------------------------------"
+if [ -d /sys/module/mtk_fpsgo/parameters ]; then
+    bhr_state=$(cat /sys/module/mtk_fpsgo/parameters/bhr 2>/dev/null || echo N/A)
+    bhr_opp=$(cat /sys/module/mtk_fpsgo/parameters/bhr_opp 2>/dev/null || echo N/A)
+    fstb_sep=$(cat /sys/module/mtk_fpsgo/parameters/fstb_separate_runtime_enable 2>/dev/null || echo N/A)
+    echo "  FPSGO BHR State  : ${bhr_state} (Bounceless High-Efficiency Rendering)"
+    echo "  FPSGO BHR OPP    : ${bhr_opp} (Smooth OPP Interpolation)"
+    echo "  FSTB Separate RT : ${fstb_sep} (Runtime Decoupling)"
+fi
+
 echo "================================================================="

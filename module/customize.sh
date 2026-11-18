@@ -1,8 +1,8 @@
 #!/system/bin/sh
 
-ui_print "- Installing TECNO LH8n Triple UnderVolt, EAS & PPM Policy Tuning"
-ui_print "- Version: v2.4"
-ui_print "- Targets: CPU (-50mV), GPU (-50mV), DVFSRC Vcore (-75mV), EAS & PPM Arbitration"
+ui_print "- Installing TECNO LH8n Triple UnderVolt, EAS, PPM, GED & FPSGO Tuning"
+ui_print "- Version: v2.5"
+ui_print "- Targets: CPU (-50mV), GPU (-50mV), DVFSRC Vcore (-75mV), GED, Uclamp & FPSGO"
 ui_print "- Author: Kana Wesley Yamada"
 
 # 1. Check root environment (Preinit requires KernelSU or SukiSU)

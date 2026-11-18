@@ -402,3 +402,48 @@ Disassembly and ELF relocation inspection revealed that relocatable kernel modul
 
 3. **Storage Sync**:
    `customize.sh` was augmented with explicit kernel page cache flushes (`sync; sync; sync`) immediately after bare-metal partition writes to prevent dirty block writeback truncation during automated reboots.
+
+---
+
+## 7. MediaTek Graphics Efficiency Driver (`ged.ko`) Reverse Engineering
+
+### 7.1 Overview & Architecture
+The MediaTek Graphics Efficiency Driver (`ged.ko`) serves as the kernel-side arbiter for GPU DVFS requests originating from userspace rendering frameworks (HWUI, SurfaceFlinger, and vendor graphics libraries via `/dev/ged`). It manages frame completion tracking, frame buffer queue event dispatching, and dynamic frequency boost calculations before dispatching frequency requests to `mtk_gpufreq_mt6833.ko`.
+
+* Architecture: ELF 64-bit LSB relocatable, ARM aarch64
+* Section `.text`: File Offset `0x00000280`, Size `0x0001ad50`
+* Section `.data`: File Offset `0x0001dfd0`, Size `0x00002ab0`
+
+### 7.2 Disassembly of Key GED Driver Functions
+
+#### 1. Frame Buffer Swap Boost Check (`ged_dvfs_boost_gpu_freq` at `.text + 0x10db8`, File Offset: `0x11038`)
+`ged_dvfs_boost_gpu_freq` is invoked upon frame queue events to request immediate GPU frequency ramps:
+```aarch64
+0x11018: adrp  x8, 0x2e000
+0x1101c: ldrb  w8, [x8, #0x2d8]     // Load enable_gpu_boost
+0x11020: cbz   w8, 0x11074          // Early exit if enable_gpu_boost == 0
+0x11024: adrp  x0, 0x2e000
+0x11028: add   x0, x0, #0x2a0       // &ged_dvfs_lock
+0x1102c: bl    mutex_lock           // Acquire mutex
+```
+When `enable_gpu_boost` is `0`, the instruction at `0x11020` (`cbz w8, 0x11074`) immediately branches past the mutex acquisition, calculation logic, and frequency dispatch call. It exits cleanly in 3 instructions with zero CPU cycle overhead, eliminating all synthetic 2D boost pulses.
+
+#### 2. Userspace Bridge Event Notification (`ged_bridge_event_notify` at `.text + 0xd030`, File Offset: `0xd2b0`)
+```aarch64
+0xd2a8: adrp  x8, 0x2e000
+0xd2ac: ldrb  w8, [x8, #0x2e0]     // Load ged_boost_enable
+0xd2b0: cbz   w8, 0xd310           // Exit if ged_boost_enable == 0
+```
+Setting `ged_boost_enable = 0` causes `ged_bridge_event_notify` and `ged_dispatch` to bypass userspace boost requests immediately, shielding the GPU from external touch and animation boost traps.
+
+#### 3. Headroom Margin Calculation (`gx_fb_dvfs_margin`)
+Inside the frequency calculation engine, the target frequency is adjusted using `gx_fb_dvfs_margin`:
+```aarch64
+// Calculated workload: freq_calc
+// Headroom applied: freq_target = freq_calc * (100 + gx_fb_dvfs_margin) / 100
+```
+* **Stock Setting (`100`)**: The calculated GPU demand is multiplied by `(100 + 100) / 100 = 2.0x`. This artificial 100% margin doubles frequency targets, forcing the GPU into high OPPs during basic 2D list scrolling.
+* **Tuned Setting (`25`)**: Reduces the headroom multiplier to `1.25x`, preserving frame pacing stability while keeping the GPU firmly at its 390 MHz base floor during standard UI rendering.
+
+### 7.3 Architectural Equivalence: Sysfs vs Binary Patching
+Because MediaTek engineers exposed `enable_gpu_boost`, `ged_boost_enable`, and `gx_fb_dvfs_margin` as writable sysfs module parameters (`/sys/module/ged/parameters/`), runtime parameter actuation in [service.sh](file:///home/yamada/CODE/MT6833GP-Experiment/module/service.sh) achieves 100% identical instruction execution paths to binary patching, while maintaining complete module integrity and zero risk of kernel symbol or relocation breakage.

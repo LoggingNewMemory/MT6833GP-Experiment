@@ -32,6 +32,31 @@ if [ -f /proc/ppm/policy/lcmoff_min_freq ]; then
     echo 200000 > /proc/ppm/policy/lcmoff_min_freq 2>/dev/null
 fi
 
+# Configure MediaTek GED (Graphics Efficiency Driver) Micro-Tuning
+# 1. Eliminate artificial 2D and buffer-queue boost spikes
+if [ -d /sys/module/ged/parameters ]; then
+    echo 0 > /sys/module/ged/parameters/enable_gpu_boost 2>/dev/null
+    echo 0 > /sys/module/ged/parameters/ged_boost_enable 2>/dev/null
+    echo 0 > /sys/module/ged/parameters/ged_smart_boost 2>/dev/null
+    echo 25 > /sys/module/ged/parameters/gx_fb_dvfs_margin 2>/dev/null
+fi
+
+# Configure Uclamp System Group Decoupling & Background Utilization Floor
+if [ -f /dev/cpuctl/system/uclamp.min ]; then
+    echo 20.00 > /dev/cpuctl/system/uclamp.min 2>/dev/null
+fi
+if [ -f /dev/cpuctl/system/cpu.uclamp.min ]; then
+    echo 20.00 > /dev/cpuctl/system/cpu.uclamp.min 2>/dev/null
+fi
+sysctl -w kernel.sched_util_clamp_min=0 2>/dev/null
+
+# Configure MediaTek FPSGO (Frame Rate Stabilization & BHR Game Pacing)
+if [ -d /sys/module/mtk_fpsgo/parameters ]; then
+    echo 1 > /sys/module/mtk_fpsgo/parameters/bhr 2>/dev/null
+    echo 1 > /sys/module/mtk_fpsgo/parameters/bhr_opp 2>/dev/null
+    echo 1 > /sys/module/mtk_fpsgo/parameters/fstb_separate_runtime_enable 2>/dev/null
+fi
+
 # Log status
 {
     echo "=== Triple Undervolt Module Status ==="
@@ -107,4 +132,14 @@ fi
     cat /proc/ppm/policy/thermal_cur_power 2>/dev/null
     echo "PPM lcmoff_min_freq:"
     cat /proc/ppm/policy/lcmoff_min_freq 2>/dev/null
+    echo "--- GED Micro-Tuning Status ---"
+    cat /sys/module/ged/parameters/enable_gpu_boost 2>/dev/null
+    cat /sys/module/ged/parameters/ged_boost_enable 2>/dev/null
+    cat /sys/module/ged/parameters/gx_fb_dvfs_margin 2>/dev/null
+    echo "--- Uclamp Decoupling Status ---"
+    cat /dev/cpuctl/system/uclamp.min 2>/dev/null || cat /dev/cpuctl/system/cpu.uclamp.min 2>/dev/null
+    cat /proc/sys/kernel/sched_util_clamp_min 2>/dev/null
+    echo "--- FPSGO BHR Status ---"
+    cat /sys/module/mtk_fpsgo/parameters/bhr 2>/dev/null
+    cat /sys/module/mtk_fpsgo/parameters/bhr_opp 2>/dev/null
 } > /data/local/tmp/undervolt.log 2>&1
