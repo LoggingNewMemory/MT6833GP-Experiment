@@ -416,7 +416,7 @@ In stock firmware, CCI operates across 16 discrete OPPs ranging from **1600 MHz*
 
 ### 9.2 Hardware HVFS Mailbox Arbitration (`0x24c`)
 Frequency and voltage transitions on the CCI bus are not handled by Linux cpufreq governors directly. Instead, `CPU_DVFS.ko` interfaces with the hardware Hardware Voltage and Frequency Scaling (HVFS) controller:
-1. `mt_cpufreq_ctrl_cci_volt` and `cpuhvfs_set_set_cci_volt` write target PMIC voltage codes into HVFS control mailbox offset `0x24c`:
+1. `mt_cpufreq_ctrl_cci_volt` and `cpuhvfs_set_set_cci_volt` write target PMIC voltage codes into HVFS control mailbox offset `0x24c` (detailed disassembly in [REVERSE_ENGINEERING.md](file:///home/yamada/CODE/MT6833GP-Experiment/docs/REVERSE_ENGINEERING.md#8-cluster-2-cache-coherent-interconnect-cci--hvfs-mailbox-reverse-engineering)):
    ```aarch64
    0x7cf8 <cpuhvfs_set_set_cci_volt>:
        adrp x8, [hvfs_base]
@@ -436,7 +436,7 @@ u8 cpuhvfs_get_cci_result(int little_idx, int big_idx, int mode) {
     return record_CCI_Ref[offset];
 }
 ```
-* **Normal Mode (`mode = 0`, 0x000–0x0ff)**: 16 rows (Little OPP) $\times$ 16 columns (Big OPP).
+* **Normal Mode (`mode = 0`, 0x000–0x0ff)**: 16 rows (Little OPP) x 16 columns (Big OPP).
 * **Performance Mode (`mode = 1`, 0x100–0x1ff)**: Allows uncapped interconnect scaling up to 1600 MHz OPP 0.
 
 ### 9.4 200 MHz Underclock Floor Unlock & Decoupled Matrix Clamping
