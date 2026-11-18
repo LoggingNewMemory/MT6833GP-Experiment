@@ -4,7 +4,7 @@
 [![Root: KernelSU-Next Pre-Init](https://img.shields.io/badge/Root-KernelSU--Next%20Pre--Init-green.svg)](https://github.com/KernelSU-Next/KernelSU-Next)
 [![GPU: Mali-G57 MC2](https://img.shields.io/badge/GPU-Mali--G57%20MC2-orange.svg)](https://developer.arm.com/Processors/Mali-G57)
 [![CPU: Cortex-A76/A55](https://img.shields.io/badge/CPU-Cortex--A76%2FA55-red.svg)](https://developer.arm.com/)
-[![Version: v2.6](https://img.shields.io/badge/Release-v2.6%20Quad%20Undervolt%2C%20CCI%20%26%20EAS-success.svg)](https://github.com/LoggingNewMemory/MT6833GP-Experiment)
+[![Version: v2.7](https://img.shields.io/badge/Release-v2.7%20Quad%20Undervolt%2C%20SPM%20Clamp%20%26%20EAS-success.svg)](https://github.com/LoggingNewMemory/MT6833GP-Experiment)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-lightgrey.svg)](LICENSE)
 
 An open-source hardware reverse engineering and systems research project documenting the dynamic voltage and frequency scaling (DVFS) architecture, Energy Estimation Model (EEM) runtime mechanisms, DVFSRC interconnect arbitration, and MT6359 Power Management IC (PMIC) cross-wiring on the MediaTek MT6833 platform (Dimensity 6080, Dimensity 810, Dimensity 700), validated on the TECNO Pova 5 Pro 5G (LH8n).
@@ -38,7 +38,8 @@ Through static binary reverse engineering in Ghidra and live kernel debugging vi
 6. **PPM Policy Arbitration & Dynamic PowerHAL Tuning (v2.4 Profile)**: Resolved aggressive touch-boost battery drain via an autonomous native AArch64 JSON patcher (`patch_powerhint`) running at early `post-fs-data`. Dynamically reads the installed ROM's `/vendor/etc/powerhint.json` to eliminate Mali-G57 GPU level 0 (1068 MHz) spiking and Cortex-A76 Big core 1.44 GHz clamps while preserving 100% of ROM maintainer custom hints across updates. Re-tuned Little cluster interaction boost to 100 ms @ 703 MHz (-50.00 mV @ 637.50 mV, 24.8 mW dynamic power), aligned Cobra multi-cluster power budgets (293 mW floor to 2479 mW peak), and integrated `PPM_POLICY_LCM_OFF` (Policy 8) locking Little cores to the 200 MHz floor during screen-off sleep.
 7. **MediaTek GED GPU Micro-Tuning, Uclamp Decoupling & FPSGO BHR Pacing (v2.5 Profile)**: Completely eliminated 2D GPU boost spikes (`enable_gpu_boost = 0`, `ged_boost_enable = 0`, `ged_smart_boost = 0`) and halved DVFS headroom margins from 100% (2.0x) to 25% (1.25x), saving 80–150 mW during scrolling and typing. Decoupled the Android `system` cgroup from max capacity clamp (`uclamp.min = 20.00`, `kernel.sched_util_clamp_min = 0`), preventing background system services from locking clocks to 2.0/2.4 GHz. Enabled MediaTek FPSGO Bounceless High-efficiency Rendering (`bhr = 1`, `bhr_opp = 1`, `fstb_separate_runtime_enable = 1`), eliminating ~30% frame pacing jitter in 60/90 FPS gaming.
 8. **Cluster 2 (CCI Interconnect) -50.00 mV Undervolt & 200 MHz Floor Unlock (v2.6 Profile)**: Extended full -50.00 mV undervolt across all 16 interconnect operating points (OPP 0: 1600 MHz @ 950.00 mV down to OPP 14: 450 MHz @ 600.00 mV). Unlocked a physical 200 MHz interconnect underclock floor on OPP 15 (581.25 mV, a=4, b=2, VCO=1600 MHz), cutting idle interconnect dynamic power by 64.5%. Decoupled the 16x16 mapping matrices (`CCI_B24GTbl`, `CCI_FYTbl`, `CCI_B20GTbl`) so the 200 MHz floor engages strictly when both Little and Big CPU clusters occupy their 200 MHz idle floor, preventing memory bandwidth starvation during single-cluster bursts.
-9. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.6.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU, GPU, and Upower modules, complete with automated stock backup and uninstall restoration.
+9. **SPM Hardware Sequencer Clamp (`SPM_DVFS_CMD0`, v2.7 Profile)**: Eliminated the dynamic 725.00 mV hardware override triggered during peak DDR 4266 MT/s saturation. Patched `mtk-dvfsrc-helper.ko` at File Offset `0x6058` to atomically reprogram `SPM_DVFS_CMD0` at physical address `0x10006710` from `0x152c0023` (725.00 mV) down to `0x152c0017` (650.00 mV), permanently locking the physical MT6359 buck Vcore rail (`regulator.12`) to 650.00 mV across all burst states and full 8-core CPU load.
+10. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.7.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU, GPU, and Upower modules, complete with automated stock backup and uninstall restoration.
 10. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
 11. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
 12. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula `Vsram = max(750.00 mV, Vproc + 100.00 mV)`, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
@@ -343,14 +344,15 @@ $$
 
 ---
 
-### 3.5 DVFSRC Vcore Voltage Summary (v2.1 Profile)
+### 3.5 DVFSRC Vcore & SPM Hardware Sequencer Summary (v2.7 Profile)
 
-| Level | Stock Voltage | Patched Voltage | Net Delta | Clamped Driver Function |
+| Level / Target | Stock Config | Patched Config | Net Delta | Mechanism |
 | :---: | :---: | :---: | :---: | :--- |
-| Level 0 | 550.00 mV | **550.00 mV** | 0.00 mV | Idle baseline |
-| Level 1 | 600.00 mV | **600.00 mV** | 0.00 mV | Low-power interconnect |
-| Level 2 | 650.00 mV | **650.00 mV** | 0.00 mV | Nominal load |
-| Level 3 | 725.00 mV | **650.00 mV** | **-75.00 mV** | `min(w, 2)` via `bic Rd, Rn, Rn, lsr #1` |
+| Level 0 (Idle) | 550.00 mV | **550.00 mV** | 0.00 mV | Idle baseline |
+| Level 1 (Low Power) | 600.00 mV | **600.00 mV** | 0.00 mV | Low-power interconnect |
+| Level 2 (Nominal) | 650.00 mV | **650.00 mV** | 0.00 mV | Nominal load |
+| Level 3 (Peak Display) | 725.00 mV | **650.00 mV** | **-75.00 mV** | `min(w, 2)` via `bic Rd, Rn, Rn, lsr #1` |
+| `SPM_DVFS_CMD0` (4266 MT/s) | `0x152c0023` (725 mV) | **`0x152c0017` (650 mV)** | **-75.00 mV** | Hardware Sequencer Reprogramming (`0x10006710`) |
 
 ---
 
@@ -408,24 +410,28 @@ Measurements were recorded on a retail TECNO Pova 5 Pro 5G running Android 14 at
 
 ## 5. Live On-Device Monitor Output
 
-Running `scripts/check_voltage.sh` directly on the physical hardware via root shell confirms live rail telemetry with v2.5 active:
+Running `scripts/check_voltage.sh` directly on the physical hardware via root shell confirms live rail telemetry with v2.7 active:
 
 ```text
 =================================================================
        TECNO LH8n Hardware Voltage & Frequency Monitor           
 =================================================================
-Timestamp: Wed Nov 18 08:31:29 WIB 2026
+Timestamp: Wed Nov 18 10:51:04 WIB 2026
 Target:    MT6833 Dimensity 6080 | MT6359 PMIC
 -----------------------------------------------------------------
 
 [ CPU Logic & Cache Rails ]
 -----------------------------------------------------------------
-  Little CPU (buck_vgpu11) :  775.00 mV (775000 uV)
-  Big CPU    (buck_vproc2) :  743.75 mV (743750 uV)
-  L Cache    (vsram_proc1) :  843.75 mV (843750 uV)
-  B Cache    (vsram_proc2) :  906.25 mV (906250 uV)
-  Little OPP 0 (Max)     : 0(2000000,95000)   <-- 950.00 mV (-50.00 mV locked)
-  Big OPP 0    (Max)     : 0(2400000,100000)  <-- 1000.00 mV (-50.00 mV locked)
+  Little CPU (buck_vgpu11) :  550.00 mV (550000 uV)
+  Big CPU    (buck_vproc2) :  550.00 mV (550000 uV)
+  L Cache    (vsram_proc1) :  750.00 mV (750000 uV)
+  B Cache    (vsram_proc2) :  750.00 mV (750000 uV)
+  Little OPP 0 (Max)     : 0(2000000,95000)
+  Big OPP 0    (Max)     : 0(2400000,100000)
+  CCI OPP 0    (Max)     : 0(1600000,95000)
+  CCI OPP 15   (Min)     : 15(200000,58125)
+  CCI Active OPP         : OPP 0
+  CCI Governor Mode      : cci_mode as Normal mode 0
 
 [ GPU Power Rails (Mali-G57 MC2) ]
 -----------------------------------------------------------------
@@ -436,15 +442,16 @@ Target:    MT6833 Dimensity 6080 | MT6359 PMIC
 
 [ SoC Core & DVFSRC Rails ]
 -----------------------------------------------------------------
-  vcore      (buck_vcore)  :  725.00 mV (725000 uV)
-  dvfsrc     (dvfsrc-vcore) :  650.00 mV (650000 uV)
-  DVFSRC Vcore Level     : Level 1 (SW_REQ 3: 00000000)
-  PMIC Reg 0x152c        : 0x23 (Selector 35 ->  725.00 mV (725000 uV))
+  vcore      (buck_vcore)  :  650.00 mV (650000 uV)
+  dvfsrc     (dvfsrc-vcore) :  550.00 mV (550000 uV)
+  DVFSRC Vcore Level     : Level 2 (SW_REQ 3: 00000000)
+  SPM Hardware CMD0      : 0x152c0017
+  PMIC Reg 0x152c        : 0x17 (Selector 23 ->  650.00 mV (650000 uV))
 
 [ Live CPU Frequencies & Clocks ]
 -----------------------------------------------------------------
-  CPU0 (Little A55) : Cur: 1500 MHz | Gov Min:  200 MHz | HW Min:  200 MHz
-  CPU6 (Big A76)    : Cur: 2118 MHz | Gov Min:  200 MHz | HW Min:  200 MHz
+  CPU0 (Little A55) : Cur:  200 MHz | Gov Min:  200 MHz | HW Min:  200 MHz
+  CPU6 (Big A76)    : Cur:  200 MHz | Gov Min:  200 MHz | HW Min:  200 MHz
 
 [ Live GPU State ]
 -----------------------------------------------------------------
@@ -453,10 +460,10 @@ Target:    MT6833 Dimensity 6080 | MT6359 PMIC
 
 [ Module & Thermal Health ]
 -----------------------------------------------------------------
-  CPU_DVFS.ko MD5 : 2c91816ad73358a3fba76bd08bd5ddfd (v2.5 verified)
-  GPU_DVFS.ko MD5 : 72d720ce5b9312e1914b61b73f7c6679 (v2.5 verified)
-  Upower.ko MD5   : 0d43699181e12bfd231d377b292a8291 (v2.5 verified)
-  SoC Temp        : 30.3 C
+  CPU_DVFS.ko MD5 : fc465aae8869857e349594a2a1961dcb
+  GPU_DVFS.ko MD5 : 72d720ce5b9312e1914b61b73f7c6679
+  Upower.ko MD5   : fc2cdcd3c5a9d5cfef352719f8762ab3
+  SoC Temp        : 30.6 C
   Battery Temp    : 33.0 C
 
 [ Upower EAS & PPM Energy Model ]
@@ -563,10 +570,10 @@ adb pull /vendor/lib/modules/Upower.ko stock/
 ```bash
 ./build.sh
 ```
-This executes all Python patchers, packages preinit and `magiskboot` partition patchers, and produces `out/LH8nUnderVolt_v2.6.zip`.
+This executes all Python patchers, packages preinit and `magiskboot` partition patchers, and produces `out/LH8nUnderVolt_v2.7.zip`.
 
 ### Step 3: Flash and Monitor
-1. Install `out/LH8nUnderVolt_v2.6.zip` using KernelSU Manager.
+1. Install `out/LH8nUnderVolt_v2.7.zip` using KernelSU Manager.
 2. Reboot the device.
 3. Verify live operation via root terminal:
    ```bash

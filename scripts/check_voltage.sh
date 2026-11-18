@@ -144,7 +144,11 @@ dvfsrc_dump_path="/sys/devices/platform/10012000.dvfsrc/helio-dvfsrc/dvfsrc_dump
 if [ -f "$dvfsrc_dump_path" ]; then
     opp_val=$(grep "CURR_VCORE_OPP" "$dvfsrc_dump_path" 2>/dev/null | awk '{print $3}')
     sw_req=$(grep "SW_REQ 1~4" "$dvfsrc_dump_path" 2>/dev/null | awk '{print $4}' | tr -d ',')
+    spm_cmd0=$(grep "SPM_DVFS_CMD0~4" "$dvfsrc_dump_path" 2>/dev/null | awk '{print $3}' | tr -d ',')
     printf "  %-22s : Level %s (SW_REQ 3: %s)\n" "DVFSRC Vcore Level" "${opp_val:-N/A}" "${sw_req:-N/A}"
+    if [ -n "$spm_cmd0" ]; then
+        printf "  %-22s : %s\n" "SPM Hardware CMD0" "$spm_cmd0"
+    fi
 fi
 
 # Read MT6359 PMIC register 0x152c (VCORE buck target)

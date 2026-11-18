@@ -519,3 +519,41 @@ u8 cpuhvfs_get_cci_result(int little_idx, int big_idx, int mode) {
 In stock firmware matrices (`CCI_FYTbl`, `CCI_B20GTbl`, `CCI_B24GTbl`), rows 11..15 and columns 11..15 unconditionally mapped to OPP 15 (stock 450 MHz). When unlocking the physical 200 MHz floor on OPP 15:
 1. Clamping rows 11..14 and columns 11..14 to **OPP 14 (450 MHz @ 600.00 mV)** prevents interconnect bandwidth starvation when a single cluster is active (e.g., Little at 862 MHz / OPP 11).
 2. Clamping **OPP 15 (200 MHz @ 581.25 mV)** strictly to `(row == 15 && col == 15)` guarantees that the 200 MHz underclock floor engages exclusively when both CPU clusters occupy their 200 MHz idle floor, reducing interconnect dynamic power by **64.5%** with zero active latency penalty.
+
+---
+
+## 9. DVFSRC SPM Hardware Sequencer (`SPM_DVFS_CMD0`) Reverse Engineering
+
+### 9.1 SPM Memory Mappings and Mailbox Registers
+Device tree node `dvfsrc@10012000` declares two memory banks:
+1. `0x10012000` (size `0x1000`): DVFSRC hardware controller.
+2. `0x10006000` (size `0x1000`): SPM hardware sequencer (`reg-names = "dvfsrc", "spm"`).
+
+In `mtk-dvfsrc-helper.ko`, SPM hardware mailbox command registers (`SPM_DVFS_CMD0..4`) are mapped at offset `0x710..0x720` from `spm_base` (`0x10006710..0x10006720`).
+
+### 9.2 Disassembly of `dvfsrc_dump_mt6873_spm_info`
+At `.text + 0x5040` (File Offset: `0x6040`):
+```aarch64
+0x5040: ldr      x8, [x19, #0x70]
+0x5044: ldr      x9, [x19, #0x28]       // x9 = spm_base (0x10006000 virtual mapping)
+0x5048: ldr      x8, [x8, #0x10]
+0x504c: ldr      x8, [x8, #0x10]
+0x5050: ldrsw    x8, [x8, #0x20]        // x8 = 0x710 (SPM_DVFS_CMD0 register offset)
+0x5054: add      x2, x9, x8             // x2 = spm_base + 0x710 (&SPM_DVFS_CMD0)
+0x5058: nop                             // 1f 20 03 d5 (Stock alignment NOP)
+0x505c: ldr      w4, [x2]               // 44 00 40 b9 (Read stock SPM_DVFS_CMD0)
+0x5060: nop                             // 1f 20 03 d5 (Stock alignment NOP)
+0x5064: dmb      oshld
+```
+
+### 9.3 Binary Patch Site
+`scripts/patch_dvfsrc.py` replaces the two NOPs and LDR at `0x5058..0x5060` with a direct hardware store:
+```aarch64
+0x5058: mov      w4, #0x0017            // e4 02 80 52 (Selector 23 = 650.00 mV)
+0x505c: movk     w4, #0x152c, lsl #16   // 84 a5 a2 72 (w4 = 0x152c0017)
+0x5060: str      w4, [x2]               // 44 00 00 b9 (Hardware store to SPM_DVFS_CMD0)
+0x5064: dmb      oshld
+```
+* **Payload Encoding**: Target PMIC register `0x152c` (`MT6359P_BUCK_VCORE_ELR0`) and selector code `0x0017` (23 = 650.00 mV).
+* **Execution**: Triggered via `cat /sys/devices/platform/10012000.dvfsrc/10012000.dvfsrc:dvfsrc-helper/dvfsrc_dump` at boot by `service.sh`.
+* **Verification**: Live telemetry confirms `SPM_DVFS_CMD0~4 : 0x152c0017, ...` and physical buck rail `regulator.12` locked at 650.00 mV during peak 8-core CPU saturation and DDR 4266 MT/s bandwidth.

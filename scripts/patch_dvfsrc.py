@@ -132,6 +132,7 @@ def patch_mtk_dvfsrc_regulator(data):
 
 def patch_mtk_dvfsrc_helper(data, target_level=2):
     print("[*] Patching mtk-dvfsrc-helper.ko...")
+    # 1. OPP table in .data
     res = find_symbol_offset(data, 'dvfsrc_opp_mt6833_lp4')
     if not res:
         offset, size = 0xeb90, 400
@@ -150,6 +151,34 @@ def patch_mtk_dvfsrc_helper(data, target_level=2):
             print(f"    - Helper OPP entry {i:2d} (DDR step {dram_opp}): Level {vcore_opp} -> {target_level}")
             patched_count += 1
     print(f"[+] Patched {patched_count} OPP entries in mtk-dvfsrc-helper.ko")
+
+    # 2. SPM Hardware Vcore Sequencer Clamp (SPM_DVFS_CMD0)
+    # Clamps SPM_DVFS_CMD0 (spm_base + 0x710) to 0x152c0017 (650.00 mV)
+    res_func = find_symbol_offset(data, 'dvfsrc_dump_mt6873_spm_info')
+    if not res_func:
+        func_offset = 0x5e20
+        print(f"[!] dvfsrc_dump_mt6873_spm_info not found in symtab, using static offset 0x{func_offset:x}")
+    else:
+        func_offset, func_size = res_func
+        print(f"[+] Located dvfsrc_dump_mt6873_spm_info at 0x{func_offset:x}")
+
+    inst_offset = func_offset + (0x5058 - 0x4e20) # 0x238
+    curr_bytes = data[inst_offset:inst_offset+12]
+    # Stock: nop (1f 20 03 d5) + ldr w4, [x2] (44 00 40 b9) + nop (1f 20 03 d5)
+    stock_bytes = bytes.fromhex('1f2003d5440040b91f2003d5')
+    # Patched: mov w4, #0x17 (e4 02 80 52) + movk w4, #0x152c, lsl #16 (84 a5 a2 72) + str w4, [x2] (44 00 00 b9)
+    clamped_bytes = bytes.fromhex('e402805284a5a272440000b9')
+
+    if curr_bytes == stock_bytes:
+        data[inst_offset:inst_offset+12] = clamped_bytes
+        print(f"[+] Patched SPM_DVFS_CMD0 hardware clamp at 0x{inst_offset:x}:")
+        print(f"    - 0x5058: mov  w4, #0x0017          ; Selector 23 = 650.00 mV")
+        print(f"    - 0x505c: movk w4, #0x152c, lsl #16 ; w4 = 0x152c0017")
+        print(f"    - 0x5060: str  w4, [x2]             ; Store to SPM_DVFS_CMD0 (spm_base + 0x710)")
+    elif curr_bytes == clamped_bytes:
+        print(f"[+] SPM_DVFS_CMD0 hardware clamp at 0x{inst_offset:x} is already patched.")
+    else:
+        raise ValueError(f"Unexpected instructions at 0x{inst_offset:x}: {curr_bytes.hex()}")
 
 def main():
     parser = argparse.ArgumentParser(description="MediaTek MT6833 DVFSRC Vcore Patcher")

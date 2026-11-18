@@ -148,6 +148,17 @@ Each operating point pairs memory clock frequency (DDR) with Vcore voltage level
 | OPP 23 | 400 MHz | 600.00 mV | **600.00 mV** | 0.00 mV | Screen-Off Sleep |
 | OPP 24 | 400 MHz | 550.00 mV | **550.00 mV** | 0.00 mV | Deep Sleep Baseline |
 
+### 4.3 SPM Hardware Command Table Sequencer Registers (`SPM_DVFS_CMD0..4`)
+Physical Base: `0x10006710` (SPM controller). When DVFSRC memory bandwidth reaches DDR OPP 0 (4266 MT/s), SPM executes its autonomous hardware command table to configure PMIC register `0x152c`:
+
+| Hardware Register | SPM Physical Address | Stock Value | Patched Value | Target Rail / Register | Target Voltage | Net Delta |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| `SPM_DVFS_CMD0` | `0x10006710` | `0x152c0023` | **`0x152c0017`** | `MT6359P_BUCK_VCORE_ELR0` | **650.00 mV** | **-75.00 mV (Burst Floor Clamped)** |
+| `SPM_DVFS_CMD1` | `0x10006714` | `0x152c0017` | **`0x152c0017`** | `MT6359P_BUCK_VCORE_ELR0` | **650.00 mV** | 0.00 mV (Nominal Performance) |
+| `SPM_DVFS_CMD2` | `0x10006718` | `0x152c000f` | **`0x152c000f`** | `MT6359P_BUCK_VCORE_ELR0` | **600.00 mV** | 0.00 mV (Low Power Interconnect) |
+| `SPM_DVFS_CMD3` | `0x1000671c` | `0x152c0007` | **`0x152c0007`** | `MT6359P_BUCK_VCORE_ELR0` | **550.00 mV** | 0.00 mV (Idle / Deep Sleep Floor) |
+| `SPM_DVFS_CMD4` | `0x10006720` | `0x152c0007` | **`0x152c0007`** | `MT6359P_BUCK_VCORE_ELR0` | **550.00 mV** | 0.00 mV (Idle / Deep Sleep Floor) |
+
 ---
 
 ## 5. Calibrated Upower EAS Energy Model Tables (`Upower.ko`)

@@ -1,6 +1,6 @@
 id=lh8n_undervolt
 name=TECNO LH8n Triple UnderVolt, EAS & PPM Policy Tuning
-version=v2.6
-versionCode=26
+version=v2.7
+versionCode=27
 author=Kana Wesley Yamada
-description=All-in-One bare-metal undervolt: CPU Little/Big (-50mV, 200MHz floor), CCI Interconnect (-50mV, 200MHz floor), GPU (-50mV, 1068MHz@800mV), DVFSRC Vcore (OPP 0 capped at 650mV / -75mV), Calibrated EAS/PPM Energy Model (Upower.ko), Dynamic PowerHAL Touch-Boost Patcher, GED GPU 2D Spike Elimination, Uclamp System Decoupling, and FPSGO BHR Game Pacing. Includes automatic vendor_boot backup and restore.
+description=All-in-One bare-metal undervolt: CPU Little/Big (-50mV, 200MHz floor), CCI Interconnect (-50mV, 200MHz floor), GPU (-50mV, 1068MHz@800mV), DVFSRC Vcore & SPM Hardware Sequencer Clamp (SPM_DVFS_CMD0 capped at 650mV / -75mV), Calibrated EAS/PPM Energy Model (Upower.ko), Dynamic PowerHAL Touch-Boost Patcher, GED GPU 2D Spike Elimination, Uclamp System Decoupling, and FPSGO BHR Game Pacing. Includes automatic vendor_boot backup and restore.

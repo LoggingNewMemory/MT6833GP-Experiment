@@ -71,6 +71,18 @@ if [ -f /proc/cpufreq/cpufreq_cci_map_table ]; then
     echo "15 15 15 0" > /proc/cpufreq/cpufreq_cci_map_table 2>/dev/null
 fi
 
+# Configure SPM Hardware Vcore Sequencer Clamp & PMIC Direct Baseline
+# Trigger patched mtk-dvfsrc-helper to clamp SPM_DVFS_CMD0 (0x10006710) to 0x152c0017 (650.00 mV)
+if [ -f /sys/devices/platform/10012000.dvfsrc/10012000.dvfsrc:dvfsrc-helper/dvfsrc_dump ]; then
+    cat /sys/devices/platform/10012000.dvfsrc/10012000.dvfsrc:dvfsrc-helper/dvfsrc_dump >/dev/null 2>&1
+elif [ -f /sys/devices/platform/10012000.dvfsrc/helio-dvfsrc/dvfsrc_dump ]; then
+    cat /sys/devices/platform/10012000.dvfsrc/helio-dvfsrc/dvfsrc_dump >/dev/null 2>&1
+fi
+# Direct MT6359 physical buck Vcore register clamp baseline defense (Reg 0x152c = 0x17 -> 650.00 mV)
+if [ -f /sys/devices/platform/10026000.pwrap/10026000.pwrap:mt6359p/mt-pmic/pmic_access ]; then
+    echo "0x152c 0x17" > /sys/devices/platform/10026000.pwrap/10026000.pwrap:mt6359p/mt-pmic/pmic_access 2>/dev/null
+fi
+
 # Log status
 {
     echo "=== Triple Undervolt Module Status ==="
@@ -135,13 +147,18 @@ fi
     cat /sys/class/regulator/regulator.32/microvolts 2>/dev/null
     echo "--- DVFSRC & Vcore Status ---"
     echo "DVFSRC dump:"
-    cat /sys/kernel/helio-dvfsrc/dvfsrc_dump 2>/dev/null
+    cat /sys/devices/platform/10012000.dvfsrc/10012000.dvfsrc:dvfsrc-helper/dvfsrc_dump 2>/dev/null || cat /sys/kernel/helio-dvfsrc/dvfsrc_dump 2>/dev/null
     echo "DVFSRC OPP table:"
-    cat /sys/kernel/helio-dvfsrc/dvfsrc_opp_table 2>/dev/null
+    cat /sys/devices/platform/10012000.dvfsrc/10012000.dvfsrc:dvfsrc-helper/dvfsrc_opp_table 2>/dev/null || cat /sys/kernel/helio-dvfsrc/dvfsrc_opp_table 2>/dev/null
     echo "DVFSRC Vcore (regulator.3):"
     cat /sys/class/regulator/regulator.3/microvolts 2>/dev/null
     echo "PMIC buck_vcore (regulator.12):"
     cat /sys/class/regulator/regulator.12/microvolts 2>/dev/null
+    echo "PMIC Reg 0x152c (PWRAP direct):"
+    if [ -f /sys/devices/platform/10026000.pwrap/10026000.pwrap:mt6359p/mt-pmic/pmic_access ]; then
+        echo 0x152c > /sys/devices/platform/10026000.pwrap/10026000.pwrap:mt6359p/mt-pmic/pmic_access 2>/dev/null
+        cat /sys/devices/platform/10026000.pwrap/10026000.pwrap:mt6359p/mt-pmic/pmic_access 2>/dev/null
+    fi
     echo "--- MediaTek PPM Policy Status & Arbitration ---"
     cat /proc/ppm/policy_status 2>/dev/null
     echo "PPM dump_policy_list:"

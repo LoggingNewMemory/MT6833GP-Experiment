@@ -140,7 +140,44 @@ This guarantees that:
 2. The DVFSRC driver silently and atomically clamps the hardware actuation to Level 2 (650.00 mV).
 3. The physical PMIC register `0x152c` never exceeds selector `0x17` (506.25 mV + 23 x 6.25 mV = 650.00 mV), achieving an autonomous **-75.00 mV Vcore undervolt**.
 
-### 5.4 Bare-Metal Partition Patching Architecture
+### 5.4 SPM Hardware Command Table Sequencer Clamp (`SPM_DVFS_CMD0`)
+While the BIC clamp in `mtk-dvfsrc.ko` and `mtk-dvfsrc-regulator.ko` limits OS and driver requests to Level 2 (650.00 mV), MediaTek platforms incorporate an independent hardware state machine inside the System Power Manager (SPM).
+
+When high interconnect throughput or DDR OPP 0 (4266 MT/s) occurs (e.g., during multicore saturation bursts or GPU memory transfers), the DVFSRC hardware sequencer transitions the SPM to its highest operating level. Rather than delegating through kernel regulator APIs, SPM executes hardcoded commands pre-loaded into hardware mailbox registers (`SPM_DVFS_CMD0` through `SPM_DVFS_CMD4` located at physical address `0x10006710..0x10006720`).
+
+In stock firmware, `spm_cmd_dump` reveals:
+```text
+SPM_DVFS_CMD0~4 : 0x152c0023, 0x152c0017, 0x152c000f, 0x152c0007, 0x152c0007
+```
+Each entry encodes `[PMIC Register (16-bit)] [Target Value (16-bit)]`:
+* **CMD0 (`0x152c0023`)**: Target PMIC register `0x152c` (`MT6359P_BUCK_VCORE_ELR0`), value `0x0023` (Selector 35 = 725.00 mV).
+* **CMD1 (`0x152c0017`)**: Target PMIC register `0x152c`, value `0x0017` (Selector 23 = 650.00 mV).
+* **CMD2 (`0x152c000f`)**: Target PMIC register `0x152c`, value `0x000f` (Selector 15 = 600.00 mV).
+* **CMD3 (`0x152c0007`)**: Target PMIC register `0x152c`, value `0x0007` (Selector 7 = 550.00 mV).
+* **CMD4 (`0x152c0007`)**: Target PMIC register `0x152c`, value `0x0007` (Selector 7 = 550.00 mV).
+
+Whenever DDR OPP 0 engaged, SPM autonomously transmitted `0x152c0023` over the PWRAP bus, overriding the software regulator clamp and restoring the physical buck rail to 725.00 mV.
+
+#### Hardware Clamp Binary Injection
+In `stock/dvfsrc_modules/mtk-dvfsrc-helper.ko`, `dvfsrc_dump_mt6873_spm_info` holds the mapped base pointer to SPM registers (`x9 = spm_base`, `x2 = spm_base + 0x710 = SPM_DVFS_CMD0`):
+```aarch64
+0x5054: add   x2, x9, x8            // x2 = spm_base + 0x710 (SPM_DVFS_CMD0)
+0x5058: nop                         // 1f 20 03 d5
+0x505c: ldr   w4, [x2]              // 44 00 40 b9
+0x5060: nop                         // 1f 20 03 d5
+0x5064: dmb   oshld
+```
+
+`scripts/patch_dvfsrc.py` replaces this 12-byte block at File Offset `0x6058` (`.text + 0x5058`) with:
+```aarch64
+0x5058: mov   w4, #0x0017           // e4 02 80 52 (Selector 23 = 650.00 mV)
+0x505c: movk  w4, #0x152c, lsl #16  // 84 a5 a2 72 (w4 = 0x152c0017)
+0x5060: str   w4, [x2]              // 44 00 00 b9 (Writes 0x152c0017 to SPM_DVFS_CMD0)
+```
+
+At system startup, `service.sh` triggers `cat .../dvfsrc_dump`, atomically reprogramming `SPM_DVFS_CMD0` to `0x152c0017`. Even under 100% 8-core CPU saturation and DDR 4266 MT/s peak bandwidth, the hardware SPM sequencer autonomously commands `0x17` (650.00 mV), permanently preventing physical buck Vcore from ever exceeding 650.00 mV.
+
+### 5.5 Bare-Metal Partition Patching Architecture
 The DVFSRC drivers (`mtk-dvfsrc.ko`, `mtk-dvfsrc-regulator.ko`, and `mtk-dvfsrc-helper.ko`) reside inside the early boot ramdisk within the `vendor_boot` partition. Because they probe before root file systems or post-fs overlays are mounted, standard KernelSU module overlay mounts cannot intercept them.
 
 The installer implements automated bare-metal partition patching directly on the target device:
