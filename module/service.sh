@@ -57,6 +57,20 @@ if [ -d /sys/module/mtk_fpsgo/parameters ]; then
     echo 1 > /sys/module/mtk_fpsgo/parameters/fstb_separate_runtime_enable 2>/dev/null
 fi
 
+# Configure MediaTek CCI Interconnect Mapping Policy
+# Ensure idle 200 MHz engagement strictly when both clusters are at OPP 15
+if [ -f /proc/cpufreq/cpufreq_cci_map_table ]; then
+    for r in 11 12 13 14; do
+        for c in 11 12 13 14 15; do
+            echo "$r $c 14 0" > /proc/cpufreq/cpufreq_cci_map_table 2>/dev/null
+        done
+    done
+    for c in 11 12 13 14; do
+        echo "15 $c 14 0" > /proc/cpufreq/cpufreq_cci_map_table 2>/dev/null
+    done
+    echo "15 15 15 0" > /proc/cpufreq/cpufreq_cci_map_table 2>/dev/null
+fi
+
 # Log status
 {
     echo "=== Triple Undervolt Module Status ==="
@@ -104,6 +118,10 @@ fi
     cat /proc/cpufreq/MT_CPU_DVFS_LL/cpufreq_oppidx 2>/dev/null
     echo "CPU6 OPP table:"
     cat /proc/cpufreq/MT_CPU_DVFS_L/cpufreq_oppidx 2>/dev/null
+    echo "CCI OPP table:"
+    cat /proc/cpufreq/MT_CPU_DVFS_CCI/cpufreq_oppidx 2>/dev/null
+    echo "CCI mode:"
+    cat /proc/cpufreq/cpufreq_cci_mode 2>/dev/null
     echo "--- GPU Status & OPP Table ---"
     echo "GPU gpufreq_status:"
     cat /proc/gpufreqv2/gpufreq_status 2>/dev/null

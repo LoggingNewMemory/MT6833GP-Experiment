@@ -89,6 +89,18 @@ if [ -f /proc/cpufreq/MT_CPU_DVFS_LL/cpufreq_oppidx ]; then
     echo "  Big OPP 0    (Max)     : $l_opp0"
 fi
 
+if [ -f /proc/cpufreq/MT_CPU_DVFS_CCI/cpufreq_oppidx ]; then
+    cci_cur=$(grep "cpufreq_oppidx =" /proc/cpufreq/MT_CPU_DVFS_CCI/cpufreq_oppidx 2>/dev/null | awk '{print $NF}')
+    cci_opp0=$(sed -n '3p' /proc/cpufreq/MT_CPU_DVFS_CCI/cpufreq_oppidx 2>/dev/null | tr -d '\t ')
+    cci_opp15=$(tail -n 1 /proc/cpufreq/MT_CPU_DVFS_CCI/cpufreq_oppidx 2>/dev/null | tr -d '\t ')
+    echo "  CCI OPP 0    (Max)     : $cci_opp0"
+    echo "  CCI OPP 15   (Min)     : $cci_opp15"
+    echo "  CCI Active OPP         : OPP ${cci_cur:-N/A}"
+fi
+if [ -f /proc/cpufreq/cpufreq_cci_mode ]; then
+    echo "  CCI Governor Mode      : $(cat /proc/cpufreq/cpufreq_cci_mode 2>/dev/null)"
+fi
+
 # --- 2. GPU Power Rails ---
 echo ""
 echo "[ GPU Power Rails (Mali-G57 MC2) ]"

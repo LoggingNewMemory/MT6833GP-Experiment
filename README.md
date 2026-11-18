@@ -4,7 +4,7 @@
 [![Root: KernelSU-Next Pre-Init](https://img.shields.io/badge/Root-KernelSU--Next%20Pre--Init-green.svg)](https://github.com/KernelSU-Next/KernelSU-Next)
 [![GPU: Mali-G57 MC2](https://img.shields.io/badge/GPU-Mali--G57%20MC2-orange.svg)](https://developer.arm.com/Processors/Mali-G57)
 [![CPU: Cortex-A76/A55](https://img.shields.io/badge/CPU-Cortex--A76%2FA55-red.svg)](https://developer.arm.com/)
-[![Version: v2.5](https://img.shields.io/badge/Release-v2.5%20Triple%20Undervolt%2C%20GED%20%26%20FPSGO-success.svg)](https://github.com/LoggingNewMemory/MT6833GP-Experiment)
+[![Version: v2.6](https://img.shields.io/badge/Release-v2.6%20Quad%20Undervolt%2C%20CCI%20%26%20EAS-success.svg)](https://github.com/LoggingNewMemory/MT6833GP-Experiment)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-lightgrey.svg)](LICENSE)
 
 An open-source hardware reverse engineering and systems research project documenting the dynamic voltage and frequency scaling (DVFS) architecture, Energy Estimation Model (EEM) runtime mechanisms, DVFSRC interconnect arbitration, and MT6359 Power Management IC (PMIC) cross-wiring on the MediaTek MT6833 platform (Dimensity 6080, Dimensity 810, Dimensity 700), validated on the TECNO Pova 5 Pro 5G (LH8n).
@@ -37,10 +37,11 @@ Through static binary reverse engineering in Ghidra and live kernel debugging vi
 5. **Calibrated EAS Energy Model (`Upower.ko`, v2.2 Profile)**: Reverse-engineered MediaTek Unified Power (`Upower.ko`), scaling static dynamic power curves by CMOS voltage scaling (P proportional to V^2), scaling 200 MHz floor idle power down ~60% (17,036 uW -> 7,083 uW), calibrating EAS migration `turn_point` to OPP 2 (500 MHz) reflecting the 200 MHz Big core underclock floor (confirmed via `/proc/upower/upower_debug`), and disarming `upower_update_volt_by_eem` to protect calibrated power models from eFuse overwrite.
 6. **PPM Policy Arbitration & Dynamic PowerHAL Tuning (v2.4 Profile)**: Resolved aggressive touch-boost battery drain via an autonomous native AArch64 JSON patcher (`patch_powerhint`) running at early `post-fs-data`. Dynamically reads the installed ROM's `/vendor/etc/powerhint.json` to eliminate Mali-G57 GPU level 0 (1068 MHz) spiking and Cortex-A76 Big core 1.44 GHz clamps while preserving 100% of ROM maintainer custom hints across updates. Re-tuned Little cluster interaction boost to 100 ms @ 703 MHz (-50.00 mV @ 637.50 mV, 24.8 mW dynamic power), aligned Cobra multi-cluster power budgets (293 mW floor to 2479 mW peak), and integrated `PPM_POLICY_LCM_OFF` (Policy 8) locking Little cores to the 200 MHz floor during screen-off sleep.
 7. **MediaTek GED GPU Micro-Tuning, Uclamp Decoupling & FPSGO BHR Pacing (v2.5 Profile)**: Completely eliminated 2D GPU boost spikes (`enable_gpu_boost = 0`, `ged_boost_enable = 0`, `ged_smart_boost = 0`) and halved DVFS headroom margins from 100% (2.0x) to 25% (1.25x), saving 80–150 mW during scrolling and typing. Decoupled the Android `system` cgroup from max capacity clamp (`uclamp.min = 20.00`, `kernel.sched_util_clamp_min = 0`), preventing background system services from locking clocks to 2.0/2.4 GHz. Enabled MediaTek FPSGO Bounceless High-efficiency Rendering (`bhr = 1`, `bhr_opp = 1`, `fstb_separate_runtime_enable = 1`), eliminating ~30% frame pacing jitter in 60/90 FPS gaming.
-8. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.5.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU, GPU, and Upower modules, complete with automated stock backup and uninstall restoration.
-9. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
-10. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
-11. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula `Vsram = max(750.00 mV, Vproc + 100.00 mV)`, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
+8. **Cluster 2 (CCI Interconnect) -50.00 mV Undervolt & 200 MHz Floor Unlock (v2.6 Profile)**: Extended full -50.00 mV undervolt across all 16 interconnect operating points (OPP 0: 1600 MHz @ 950.00 mV down to OPP 14: 450 MHz @ 600.00 mV). Unlocked a physical 200 MHz interconnect underclock floor on OPP 15 (581.25 mV, a=4, b=2, VCO=1600 MHz), cutting idle interconnect dynamic power by 64.5%. Decoupled the 16x16 mapping matrices (`CCI_B24GTbl`, `CCI_FYTbl`, `CCI_B20GTbl`) so the 200 MHz floor engages strictly when both Little and Big CPU clusters occupy their 200 MHz idle floor, preventing memory bandwidth starvation during single-cluster bursts.
+9. **Unified Bare-Metal Partition & Preinit Package**: A single unified flashable zip (`LH8nUnderVolt_v2.6.zip`) executing automated bare-metal partition patching of `vendor_boot` ramdisk modules using `magiskboot`, plus preinit deployment for CPU, GPU, and Upower modules, complete with automated stock backup and uninstall restoration.
+10. **Resolution of the EEM Runtime Overwrite**: Identification and disarming of the `mediatek_eem.ko` background calibration task that silently restored stock factory voltages within seconds of boot.
+11. **Decryption of MediaTek PMIC Cross-Wiring**: Discovered that Device Tree phandles route Little CPU power through `buck_vgpu11` and GPU core power through `buck_vproc1`, resolving widespread telemetry confusion in custom kernel tooling.
+12. **Hardware Dynamic SRAM Scaling Discovery**: Reverse-engineered the MCUPM coprocessor SRAM tracking formula `Vsram = max(750.00 mV, Vproc + 100.00 mV)`, proving that CPU cache SRAM voltage automatically tracks logic core voltage in hardware without needing independent kernel tables.
 
 ---
 
@@ -353,6 +354,32 @@ $$
 
 ---
 
+### 3.6 Cache Coherent Interconnect Table (Cluster 2 CCI, v2.6 Profile)
+* Stock Operating Range: 450 MHz (650.00 mV nominal) to 1600 MHz (1000.00 mV nominal).
+* Patched Operating Range: **200 MHz (581.25 mV) to 1600 MHz (950.00 mV)**.
+* Interconnect Mapping: Decoupled 16x16 matrix (`CCI_B24GTbl`) activates 200 MHz OPP 15 strictly when both Little and Big CPU clusters occupy their 200 MHz idle floor (`row == 15 && col == 15`).
+
+| OPP Index | Target Frequency | Stock Nominal | Patched Nominal | Delta vs Stock | PLL Config (a, b) | VCO Freq |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| 0 | 1600 MHz | 1000.00 mV | **950.00 mV** | -50.00 mV | (1, 1) | 1600 MHz |
+| 1 | 1531 MHz |  981.25 mV | **931.25 mV** | -50.00 mV | (2, 1) | 3062 MHz |
+| 2 | 1370 MHz |  937.50 mV | **887.50 mV** | -50.00 mV | (2, 1) | 2740 MHz |
+| 3 | 1210 MHz |  893.75 mV | **843.75 mV** | -50.00 mV | (2, 1) | 2420 MHz |
+| 4 | 1141 MHz |  875.00 mV | **825.00 mV** | -50.00 mV | (2, 1) | 2282 MHz |
+| 5 | 1050 MHz |  850.00 mV | **800.00 mV** | -50.00 mV | (2, 1) | 2100 MHz |
+| 6 |  975 MHz |  825.00 mV | **775.00 mV** | -50.00 mV | (2, 1) | 1950 MHz |
+| 7 |  900 MHz |  800.00 mV | **750.00 mV** | -50.00 mV | (2, 1) | 1800 MHz |
+| 8 |  825 MHz |  775.00 mV | **725.00 mV** | -50.00 mV | (2, 1) | 1650 MHz |
+| 9 |  768 MHz |  756.25 mV | **706.25 mV** | -50.00 mV | (4, 1) | 3072 MHz |
+| 10 |  675 MHz |  725.00 mV | **675.00 mV** | -50.00 mV | (4, 1) | 2700 MHz |
+| 11 |  600 MHz |  700.00 mV | **650.00 mV** | -50.00 mV | (4, 1) | 2400 MHz |
+| 12 |  562 MHz |  687.50 mV | **637.50 mV** | -50.00 mV | (4, 1) | 2248 MHz |
+| 13 |  525 MHz |  675.00 mV | **625.00 mV** | -50.00 mV | (4, 1) | 2100 MHz |
+| 14 |  450 MHz |  650.00 mV | **600.00 mV** | -50.00 mV | (4, 1) | 1800 MHz |
+| 15 | **200 MHz** | *(unlocked)* | **581.25 mV** | **Underclock** | (4, 2) | 1600 MHz |
+
+---
+
 ## 4. Stability, Stress Testing & Telemetry Verification
 
 ### 4.1 KernelSU Safe-Mode Bootcount Telemetry
@@ -536,10 +563,10 @@ adb pull /vendor/lib/modules/Upower.ko stock/
 ```bash
 ./build.sh
 ```
-This executes all Python patchers, packages preinit and `magiskboot` partition patchers, and produces `out/LH8nUnderVolt_v2.5.zip`.
+This executes all Python patchers, packages preinit and `magiskboot` partition patchers, and produces `out/LH8nUnderVolt_v2.6.zip`.
 
 ### Step 3: Flash and Monitor
-1. Install `out/LH8nUnderVolt_v2.5.zip` using KernelSU Manager.
+1. Install `out/LH8nUnderVolt_v2.6.zip` using KernelSU Manager.
 2. Reboot the device.
 3. Verify live operation via root terminal:
    ```bash

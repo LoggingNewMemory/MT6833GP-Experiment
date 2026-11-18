@@ -401,3 +401,60 @@ The module configures FPSGO BHR in [service.sh](file:///home/yamada/CODE/MT6833G
 * `fstb_separate_runtime_enable = 1`: Decouples render thread runtime accounting from compositor wait time, preventing false throttling during vsync backpressure.
 
 Live gaming telemetry on 60 FPS and 90 FPS titles confirms a ~30% reduction in frame time standard deviation (jitter), producing smooth, predictable frame delivery alongside reduced thermal accumulation.
+
+---
+
+## 9. Cluster 2: Cache Coherent Interconnect (CCI) DVFS Architecture
+
+### 9.1 The Role of Interconnect DVFS on MT6833
+On the MediaTek MT6833 platform, Cluster 2 corresponds to the Cache Coherent Interconnect (CCI) and DynamIQ Shared Unit (DSU) bus logic. The CCI routes memory traffic, cache snoops, and L3 cache access across:
+* Cluster 0: 6x ARM Cortex-A55 Little CPU cores
+* Cluster 1: 2x ARM Cortex-A76 Big CPU cores
+* Mali-G57 MC2 GPU and peripheral DMA subsystems
+
+In stock firmware, CCI operates across 16 discrete OPPs ranging from **1600 MHz** down to a floor of **450 MHz**.
+
+### 9.2 Hardware HVFS Mailbox Arbitration (`0x24c`)
+Frequency and voltage transitions on the CCI bus are not handled by Linux cpufreq governors directly. Instead, `CPU_DVFS.ko` interfaces with the hardware Hardware Voltage and Frequency Scaling (HVFS) controller:
+1. `mt_cpufreq_ctrl_cci_volt` and `cpuhvfs_set_set_cci_volt` write target PMIC voltage codes into HVFS control mailbox offset `0x24c`:
+   ```aarch64
+   0x7cf8 <cpuhvfs_set_set_cci_volt>:
+       adrp x8, [hvfs_base]
+       add  x9, x8, #0x24c
+       str  w0, [x9]           // Transmit target CCI voltage step to HVFS arbiter
+       dsb  sy
+       ret
+   ```
+2. The on-chip MCUPM / SPM power manager monitors this register and coordinates level-shifting across core logic and interconnect rails.
+
+### 9.3 The 16x16 Interconnect Mapping Matrix (`CCI_B24GTbl`)
+The active CCI OPP index is looked up at runtime using a 16x16 two-dimensional matrix via `cpuhvfs_get_cci_result`:
+```c
+u8 cpuhvfs_get_cci_result(int little_idx, int big_idx, int mode) {
+    if ((little_idx | big_idx) > 15) return 0;
+    int offset = (little_idx << 4) + (mode != 0 ? 0x100 : 0) + big_idx;
+    return record_CCI_Ref[offset];
+}
+```
+* **Normal Mode (`mode = 0`, 0x000–0x0ff)**: 16 rows (Little OPP) $\times$ 16 columns (Big OPP).
+* **Performance Mode (`mode = 1`, 0x100–0x1ff)**: Allows uncapped interconnect scaling up to 1600 MHz OPP 0.
+
+### 9.4 200 MHz Underclock Floor Unlock & Decoupled Matrix Clamping
+In stock configuration:
+* OPP 15 was clamped to 450 MHz with PLL divider parameters `a=4, b=1` ($f_{\text{VCO}} = 1800\text{ MHz}$) at 650.00 mV.
+* Both Little and Big clusters downclock to 200 MHz, but the interconnect remained pinned at 450 MHz.
+
+#### Underclock Floor Implementation
+By reconfiguring OPP 15 to `a=4, b=2`:
+$$
+f_{\text{VCO}} = 200\text{ MHz} \times 4 \times 2 = 1600\text{ MHz}
+$$
+This maintains strict compliance with the MT6833 CCIPLL lock envelope ($1500\text{ MHz} \le f_{\text{VCO}} \le 3500\text{ MHz}$) while unlocking a **200 MHz interconnect clock** operating at **581.25 mV (Step 29)**.
+
+#### Idle-Only Decoupling
+In stock `CCI_B24GTbl`, rows 11..15 and columns 11..15 all mapped to OPP 15. If OPP 15 was unconditionally lowered to 200 MHz, a Little core running at 862 MHz (OPP 11) would experience interconnect bandwidth starvation.
+
+To solve this, `scripts/patch_dvfs.py` and `module/service.sh` decouple the 16x16 matrix:
+* Rows 11..14 map to **OPP 14 (450 MHz @ 600.00 mV)**.
+* **OPP 15 (200 MHz @ 581.25 mV)** engages strictly when **both** Little and Big clusters are simultaneously at OPP 15 `(row == 15 && col == 15)`.
+* When the phone is at idle or in screen-off standby, interconnect dynamic power drops by **64.5%**. The moment any core wakes up to execute work ($\ge 500\text{ MHz}$), CCI instantaneously jumps to 450 MHz or higher with zero memory latency penalty.

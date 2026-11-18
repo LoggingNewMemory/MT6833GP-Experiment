@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-MediaTek MT6833 CPU_DVFS.ko Binary Patcher (v1.8 Profile)
+MediaTek MT6833 CPU_DVFS.ko Binary Patcher (v2.6 Profile)
 Author: Kana Wesley Yamada (MT6833GP-Experiment)
 
 Applies:
-1. 200 MHz underclock floor with stable PLL VCO parameters (a=4, b=2).
-2. Deeper -50.00 mV CPU & Cache SRAM undervolt across Little, Big, and CCI clusters.
-3. mediatek_eem bypass patch to prevent runtime eFuse table overwrite.
+1. 200 MHz underclock floor with stable PLL VCO parameters (a=4, b=2) across Little, Big, and CCI clusters.
+2. Full -50.00 mV CPU, Cache SRAM, and CCI interconnect undervolt across all clusters.
+3. Decoupled 16x16 CCI mapping matrices (CCI_FYTbl, CCI_B20GTbl, CCI_B24GTbl) ensuring 200 MHz floor engages strictly at full idle.
+4. mediatek_eem bypass patch to prevent runtime eFuse table overwrite.
 """
 
 import sys
@@ -86,27 +87,45 @@ big_opps = [
     ( 200,  29, 4, 2), # OPP 15: 650.00 ->  581.25 mV (200 MHz, a=4, b=2, VCO=1600 MHz)
 ]
 
-# Cluster 2: CCI
-# OPP 0..9: -37.50 mV (step - 6)
-# OPP 10..15: -31.25 mV (step - 5)
+# Cluster 2: CCI (Cache Coherent Interconnect)
+# Min: 200 MHz (Underclock floor), Max: 1600 MHz (Stock max)
+# OPP 0..13: -50.00 mV (step - 8)
+# OPP 14: 450 MHz, step 32 (600.00 mV), a=4, b=1 (VCO = 1800 MHz)
+# OPP 15: 200 MHz, step 29 (581.25 mV), a=4, b=2 (VCO = 200 * 4 * 2 = 1600 MHz)
 cci_opps = [
-    (1600, 90, 1, 1), # OPP 0: 1000.00 -> 962.50 mV (-37.50 mV)
-    (1531, 87, 2, 1), # OPP 1:  981.25 -> 943.75 mV (-37.50 mV)
-    (1370, 80, 2, 1), # OPP 2:  937.50 -> 900.00 mV (-37.50 mV)
-    (1210, 73, 2, 1), # OPP 3:  893.75 -> 856.25 mV (-37.50 mV)
-    (1141, 70, 2, 1), # OPP 4:  875.00 -> 837.50 mV (-37.50 mV)
-    (1050, 66, 2, 1), # OPP 5:  850.00 -> 812.50 mV (-37.50 mV)
-    ( 975, 62, 2, 1), # OPP 6:  825.00 -> 787.50 mV (-37.50 mV)
-    ( 900, 58, 2, 1), # OPP 7:  800.00 -> 762.50 mV (-37.50 mV)
-    ( 825, 54, 2, 1), # OPP 8:  775.00 -> 737.50 mV (-37.50 mV)
-    ( 768, 51, 4, 1), # OPP 9:  756.25 -> 718.75 mV (-37.50 mV)
-    ( 675, 47, 4, 1), # OPP 10: 725.00 -> 693.75 mV (-31.25 mV)
-    ( 600, 43, 4, 1), # OPP 11: 700.00 -> 668.75 mV (-31.25 mV)
-    ( 562, 41, 4, 1), # OPP 12: 687.50 -> 656.25 mV (-31.25 mV)
-    ( 525, 39, 4, 1), # OPP 13: 675.00 -> 643.75 mV (-31.25 mV)
-    ( 487, 37, 4, 1), # OPP 14: 662.50 -> 631.25 mV (-31.25 mV)
-    ( 450, 35, 4, 1), # OPP 15: 650.00 -> 618.75 mV (-31.25 mV)
+    (1600, 88, 1, 1), # OPP 0:  1000.00 -> 950.00 mV (-50.00 mV)
+    (1531, 85, 2, 1), # OPP 1:   981.25 -> 931.25 mV (-50.00 mV)
+    (1370, 78, 2, 1), # OPP 2:   937.50 -> 887.50 mV (-50.00 mV)
+    (1210, 71, 2, 1), # OPP 3:   893.75 -> 843.75 mV (-50.00 mV)
+    (1141, 68, 2, 1), # OPP 4:   875.00 -> 825.00 mV (-50.00 mV)
+    (1050, 64, 2, 1), # OPP 5:   850.00 -> 800.00 mV (-50.00 mV)
+    ( 975, 60, 2, 1), # OPP 6:   825.00 -> 775.00 mV (-50.00 mV)
+    ( 900, 56, 2, 1), # OPP 7:   800.00 -> 750.00 mV (-50.00 mV)
+    ( 825, 52, 2, 1), # OPP 8:   775.00 -> 725.00 mV (-50.00 mV)
+    ( 768, 49, 4, 1), # OPP 9:   756.25 -> 706.25 mV (-50.00 mV)
+    ( 675, 44, 4, 1), # OPP 10:  725.00 -> 675.00 mV (-50.00 mV)
+    ( 600, 40, 4, 1), # OPP 11:  700.00 -> 650.00 mV (-50.00 mV)
+    ( 562, 38, 4, 1), # OPP 12:  687.50 -> 637.50 mV (-50.00 mV)
+    ( 525, 36, 4, 1), # OPP 13:  675.00 -> 625.00 mV (-50.00 mV)
+    ( 450, 32, 4, 1), # OPP 14:  650.00 -> 600.00 mV (450 MHz, a=4, b=1, VCO=1800 MHz)
+    ( 200, 29, 4, 2), # OPP 15:  650.00 -> 581.25 mV (200 MHz, a=4, b=2, VCO=1600 MHz)
 ]
+
+def patch_cci_map(data, offset):
+    """
+    Decouple 16x16 CCI mapping table (Normal mode + Perf mode).
+    In stock, rows 11..15 and cols 11..15 map down to OPP 15.
+    With OPP 15 underclocked to 200 MHz and OPP 14 at 450 MHz,
+    we ensure OPP 15 engages strictly when BOTH Little and Big clusters are at OPP 15 (idle floor).
+    All other low-frequency combinations clamp to OPP 14 (450 MHz).
+    """
+    for mode_idx in range(2):
+        base = offset + mode_idx * 256
+        for r in range(16):
+            for c in range(16):
+                idx = base + r * 16 + c
+                if data[idx] == 15 and not (r == 15 and c == 15):
+                    data[idx] = 14
 
 def patch_file(input_path, output_path):
     with open(input_path, "rb") as f:
@@ -164,6 +183,12 @@ def patch_file(input_path, output_path):
     for off in [0xc5b0, 0xc5d0, 0xc5f0]:
         data[off : off + 32] = pack_method_tbl(cci_opps)
     print(" [+] Patched opp_tbl_method_* tables")
+
+    # 5.5 Patch 16x16 CCI mapping matrices (CCI_FYTbl, CCI_B20GTbl, CCI_B24GTbl)
+    patch_cci_map(data, 0xcbf8) # CCI_FYTbl
+    patch_cci_map(data, 0xcdf8) # CCI_B20GTbl
+    patch_cci_map(data, 0xcff8) # CCI_B24GTbl
+    print(" [+] Patched CCI_FYTbl, CCI_B20GTbl, and CCI_B24GTbl (idle-only 200 MHz engagement)")
 
     # 6. Patch mediatek_eem overwrite bypass
     eem_bypass_stub = bytes([

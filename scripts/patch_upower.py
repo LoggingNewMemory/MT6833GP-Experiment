@@ -8,7 +8,7 @@ Applies:
    upower_tbl_cluster_l_*, upower_tbl_cluster_b_*) to match undervolted operating points:
    - Little OPPs: 581.25 mV (200 MHz floor) .. 950.00 mV (2000 MHz max)
    - Big OPPs: 581.25 mV (200 MHz floor) .. 1000.00 mV (2400 MHz max)
-   - CCI OPPs: 618.75 mV (450 MHz floor) .. 962.50 mV (1600 MHz max)
+   - CCI OPPs: 581.25 mV (200 MHz floor) .. 950.00 mV (1600 MHz max)
 2. Recalculates dynamic power entries using physical CMOS scaling:
    P_dyn_new = P_dyn_stock * (V_patched / V_stock)^2
 3. Scales 200 MHz underclock floor capacity and power for optimal EAS task placement.
@@ -79,22 +79,22 @@ BIG_PATCHED_VOLTS_B20G = [
 ]
 
 CCI_PATCHED_VOLTS = [
-    61875, # OPP 0 (450 MHz)
-    63125, # OPP 1 (487 MHz)
-    64375, # OPP 2 (525 MHz)
-    65625, # OPP 3 (562 MHz)
-    66875, # OPP 4 (600 MHz)
-    69375, # OPP 5 (675 MHz)
-    71875, # OPP 6 (768 MHz)
-    73750, # OPP 7 (825 MHz)
-    76250, # OPP 8 (900 MHz)
-    78750, # OPP 9 (975 MHz)
-    81250, # OPP 10 (1050 MHz)
-    83750, # OPP 11 (1141 MHz)
-    85625, # OPP 12 (1210 MHz)
-    90000, # OPP 13 (1370 MHz)
-    94375, # OPP 14 (1531 MHz)
-    96250, # OPP 15 (1600 MHz)
+    58125, # OPP 0 (200 MHz underclock floor)
+    60000, # OPP 1 (450 MHz)
+    62500, # OPP 2 (525 MHz)
+    63750, # OPP 3 (562 MHz)
+    65000, # OPP 4 (600 MHz)
+    67500, # OPP 5 (675 MHz)
+    70625, # OPP 6 (768 MHz)
+    72500, # OPP 7 (825 MHz)
+    75000, # OPP 8 (900 MHz)
+    77500, # OPP 9 (975 MHz)
+    80000, # OPP 10 (1050 MHz)
+    82500, # OPP 11 (1141 MHz)
+    84375, # OPP 12 (1210 MHz)
+    88750, # OPP 13 (1370 MHz)
+    93125, # OPP 14 (1531 MHz)
+    95000, # OPP 15 (1600 MHz max)
 ]
 
 # paciasp; autiasp; ret (PAC & BTI clean instant return, 12 bytes - no relocation overlap)
@@ -165,7 +165,7 @@ def parse_elf_symbols(data):
         symbols[sym_name] = {"value": st_value, "size": st_size, "shndx": st_shndx, "file_offset": file_offset}
     return symbols
 
-def patch_table(data, offset, patched_volts, is_cluster=False, is_floor_scaled=True):
+def patch_table(data, offset, patched_volts, is_cluster=False, is_floor_scaled=True, floor_ratio=(200, 500)):
     for i in range(16):
         entry_off = offset + i * 48
         entry = data[entry_off : entry_off + 48]
@@ -179,14 +179,15 @@ def patch_table(data, offset, patched_volts, is_cluster=False, is_floor_scaled=T
         if is_cluster:
             vals[3] = 0
         elif i == 0 and is_floor_scaled:
-            # 200 MHz underclock floor: scale dynamic power from 500 MHz OPP (i=1)
-            # P_dyn = P_dyn(500) * (200/500) * (V_200 / V_500)^2
+            # Underclock floor: scale dynamic power from OPP 1 (e.g. 500 MHz CPU or 450 MHz CCI)
+            # P_dyn = P_dyn(ref) * (f_floor / f_ref) * (V_floor / V_ref)^2
+            f_floor, f_ref = floor_ratio
             entry_1 = data[offset + 48 : offset + 96]
             vals_1 = struct.unpack("<IIIIIIIIIIII", entry_1)
-            v_500_old = vals_1[2]
-            v_500_new = patched_volts[1]
-            dyn_500_new = int(vals_1[3] * ((v_500_new / v_500_old) ** 2))
-            dyn_new = int(dyn_500_new * (200 / 500) * ((volt_new / v_500_new) ** 2))
+            v_ref_old = vals_1[2]
+            v_ref_new = patched_volts[1]
+            dyn_ref_new = int(vals_1[3] * ((v_ref_new / v_ref_old) ** 2))
+            dyn_new = int(dyn_ref_new * (f_floor / f_ref) * ((volt_new / v_ref_new) ** 2))
             vals[3] = dyn_new
         else:
             dyn_new = int(dyn_old * ((volt_new / volt_old) ** 2))
@@ -205,32 +206,32 @@ def patch_upower(input_path, output_path):
 
     # 1. Patch static tables
     tables = [
-        # (Table name, Volt list, is_cluster, is_floor_scaled)
-        ("upower_tbl_l_FY", LITTLE_PATCHED_VOLTS, False, True),
-        ("upower_tbl_l_B20G", LITTLE_PATCHED_VOLTS, False, True),
-        ("upower_tbl_l_B24G", LITTLE_PATCHED_VOLTS, False, True),
-        ("upower_tbl_cluster_l_FY", LITTLE_PATCHED_VOLTS, True, True),
-        ("upower_tbl_cluster_l_B20G", LITTLE_PATCHED_VOLTS, True, True),
-        ("upower_tbl_cluster_l_B24G", LITTLE_PATCHED_VOLTS, True, True),
+        # (Table name, Volt list, is_cluster, is_floor_scaled, floor_ratio)
+        ("upower_tbl_l_FY", LITTLE_PATCHED_VOLTS, False, True, (200, 500)),
+        ("upower_tbl_l_B20G", LITTLE_PATCHED_VOLTS, False, True, (200, 500)),
+        ("upower_tbl_l_B24G", LITTLE_PATCHED_VOLTS, False, True, (200, 500)),
+        ("upower_tbl_cluster_l_FY", LITTLE_PATCHED_VOLTS, True, True, (200, 500)),
+        ("upower_tbl_cluster_l_B20G", LITTLE_PATCHED_VOLTS, True, True, (200, 500)),
+        ("upower_tbl_cluster_l_B24G", LITTLE_PATCHED_VOLTS, True, True, (200, 500)),
 
-        ("upower_tbl_b_FY", BIG_PATCHED_VOLTS_B24G, False, True),
-        ("upower_tbl_b_B20G", BIG_PATCHED_VOLTS_B20G, False, True),
-        ("upower_tbl_b_B24G", BIG_PATCHED_VOLTS_B24G, False, True),
-        ("upower_tbl_cluster_b_FY", BIG_PATCHED_VOLTS_B24G, True, True),
-        ("upower_tbl_cluster_b_B20G", BIG_PATCHED_VOLTS_B20G, True, True),
-        ("upower_tbl_cluster_b_B24G", BIG_PATCHED_VOLTS_B24G, True, True),
+        ("upower_tbl_b_FY", BIG_PATCHED_VOLTS_B24G, False, True, (200, 500)),
+        ("upower_tbl_b_B20G", BIG_PATCHED_VOLTS_B20G, False, True, (200, 500)),
+        ("upower_tbl_b_B24G", BIG_PATCHED_VOLTS_B24G, False, True, (200, 500)),
+        ("upower_tbl_cluster_b_FY", BIG_PATCHED_VOLTS_B24G, True, True, (200, 500)),
+        ("upower_tbl_cluster_b_B20G", BIG_PATCHED_VOLTS_B20G, True, True, (200, 500)),
+        ("upower_tbl_cluster_b_B24G", BIG_PATCHED_VOLTS_B24G, True, True, (200, 500)),
 
-        ("upower_tbl_cci_FY", CCI_PATCHED_VOLTS, False, False),
-        ("upower_tbl_cci_B20G", CCI_PATCHED_VOLTS, False, False),
-        ("upower_tbl_cci_B24G", CCI_PATCHED_VOLTS, False, False),
+        ("upower_tbl_cci_FY", CCI_PATCHED_VOLTS, False, True, (200, 450)),
+        ("upower_tbl_cci_B20G", CCI_PATCHED_VOLTS, False, True, (200, 450)),
+        ("upower_tbl_cci_B24G", CCI_PATCHED_VOLTS, False, True, (200, 450)),
     ]
 
-    for tbl_name, volts, is_cluster, is_floor in tables:
+    for tbl_name, volts, is_cluster, is_floor, floor_rat in tables:
         if tbl_name not in syms or syms[tbl_name]["file_offset"] is None:
             raise KeyError(f"Missing required table symbol: {tbl_name}")
         fo = syms[tbl_name]["file_offset"]
         print(f"[*] Patching {tbl_name} at file offset 0x{fo:04x}...")
-        patch_table(data, fo, volts, is_cluster=is_cluster, is_floor_scaled=is_floor)
+        patch_table(data, fo, volts, is_cluster=is_cluster, is_floor_scaled=is_floor, floor_ratio=floor_rat)
 
     # 2. Stub and disarm EEM functions
     for stub_sym in ["upower_update_volt_by_eem", "upower_update_tables_by_eem"]:
