@@ -45,10 +45,19 @@ static void patch_freq_node(cJSON *node, const char *nm) {
     int sz = cJSON_GetArraySize(values);
     if (sz == 0) return;
 
-    /* Check if 200000 is already present */
-    for (int i = 0; i < sz; i++) {
+    /* Remove legacy 200000 if present */
+    for (int i = sz - 1; i >= 0; i--) {
         cJSON *it = cJSON_GetArrayItem(values, i);
         if (cJSON_IsString(it) && strcmp(it->valuestring, "200000") == 0) {
+            cJSON_DeleteItemFromArray(values, i);
+        }
+    }
+    sz = cJSON_GetArraySize(values);
+
+    /* Check if 450000 is already present */
+    for (int i = 0; i < sz; i++) {
+        cJSON *it = cJSON_GetArrayItem(values, i);
+        if (cJSON_IsString(it) && strcmp(it->valuestring, "450000") == 0) {
             return; /* already present */
         }
     }
@@ -63,13 +72,13 @@ static void patch_freq_node(cJSON *node, const char *nm) {
 
     if (v_first >= v_last) {
         /* Descending: highest frequency first, floor is at the end */
-        cJSON_AddItemToArray(values, cJSON_CreateString("200000"));
+        cJSON_AddItemToArray(values, cJSON_CreateString("450000"));
         if (is_min_node) {
             cJSON_ReplaceItemInObject(node, "DefaultIndex", cJSON_CreateNumber(sz));
         }
     } else {
         /* Ascending: lowest frequency first, floor is at index 0 */
-        cJSON_InsertItemInArray(values, 0, cJSON_CreateString("200000"));
+        cJSON_InsertItemInArray(values, 0, cJSON_CreateString("450000"));
         if (is_min_node) {
             cJSON_ReplaceItemInObject(node, "DefaultIndex", cJSON_CreateNumber(0));
         }

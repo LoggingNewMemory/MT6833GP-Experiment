@@ -1,8 +1,8 @@
 #!/system/bin/sh
 
 ui_print "- Installing TECNO LH8n Triple UnderVolt, EAS, PPM, GED & FPSGO Tuning"
-ui_print "- Version: v2.6"
-ui_print "- Targets: CPU Little/Big/CCI (-50mV, 200MHz floor), GPU (-50mV), DVFSRC Vcore (-75mV), GED & FPSGO"
+ui_print "- Version: v2.8"
+ui_print "- Targets: CPU Little/Big/CCI (-50mV to -68.75mV, 450MHz floor), GPU (-50mV), DVFSRC Vcore (-75mV), GED & FPSGO"
 ui_print "- Author: Kana Wesley Yamada"
 
 # 1. Check root environment (Preinit requires KernelSU or SukiSU)

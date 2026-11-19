@@ -78,4 +78,9 @@ if [ -f "$SRC_JSON" ] && [ -x "$PATCHER" ]; then
     fi
 fi
 
+# Bind-mount patched powerhint.json early so PowerHAL reads patched configuration at boot
+if [ -f "$VENDOR_JSON" ]; then
+    mount -o bind "$VENDOR_JSON" /vendor/etc/powerhint.json 2>/dev/null
+fi
+
 

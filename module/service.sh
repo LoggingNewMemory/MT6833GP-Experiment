@@ -9,7 +9,7 @@ done
 # Allow PowerHAL and vendor init scripts to finish their initial boosts
 sleep 12
 
-# Enforce minfreq down to 200000 (200 MHz) across all clusters, ensuring any late vendor inits are locked
+# Enforce minfreq down to 450000 (450 MHz) across all clusters, ensuring any late vendor inits are locked
 for round in 1 2 3 4 5; do
     for node in \
         /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq \
@@ -17,19 +17,24 @@ for round in 1 2 3 4 5; do
         /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq \
         /sys/devices/system/cpu/cpu6/cpufreq/scaling_min_freq; do
         if [ -f "$node" ]; then
-            echo 200000 > "$node" 2>/dev/null
+            echo 450000 > "$node" 2>/dev/null
         fi
     done
     sleep 3
 done
 
+# Bind-mount patched powerhint.json if present
+if [ -f "$MODDIR/vendor/etc/powerhint.json" ]; then
+    mount -o bind "$MODDIR/vendor/etc/powerhint.json" /vendor/etc/powerhint.json 2>/dev/null
+fi
+
 # Configure MediaTek PPM Policy Arbitration
-# Enable PPM_POLICY_LCM_OFF (idx 8) to lock CPU to 200 MHz idle floor during screen-off sleep
+# Enable PPM_POLICY_LCM_OFF (idx 8) to lock CPU to 450 MHz idle floor during screen-off sleep
 if [ -f /proc/ppm/policy_status ]; then
     echo "8 1" > /proc/ppm/policy_status 2>/dev/null
 fi
 if [ -f /proc/ppm/policy/lcmoff_min_freq ]; then
-    echo 200000 > /proc/ppm/policy/lcmoff_min_freq 2>/dev/null
+    echo 450000 > /proc/ppm/policy/lcmoff_min_freq 2>/dev/null
 fi
 
 # Configure MediaTek GED (Graphics Efficiency Driver) Micro-Tuning
@@ -58,7 +63,7 @@ if [ -d /sys/module/mtk_fpsgo/parameters ]; then
 fi
 
 # Configure MediaTek CCI Interconnect Mapping Policy
-# Ensure idle 200 MHz engagement strictly when both clusters are at OPP 15
+# Ensure idle 450 MHz engagement strictly when both clusters are at OPP 15
 if [ -f /proc/cpufreq/cpufreq_cci_map_table ]; then
     for r in 11 12 13 14; do
         for c in 11 12 13 14 15; do

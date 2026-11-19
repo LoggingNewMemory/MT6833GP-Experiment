@@ -29,7 +29,8 @@ f_{\text{VCO}} = f_{\text{target}} \times a \times b
 $$
 
 For MT6833 PLL stability, `f_VCO` must fall within `1500 MHz <= f_VCO <= 3500 MHz`.
-- For 200 MHz: `a = 4, b = 2` -> `f_VCO = 200 x 4 x 2 = 1600 MHz` (Stable).
+- For 450 MHz: `a = 4, b = 1` -> `f_VCO = 450 x 4 x 1 = 1800 MHz` (Stable, audio-safe floor).
+- For legacy 200 MHz underclock testing: `a = 4, b = 2` -> `f_VCO = 200 x 4 x 2 = 1600 MHz` (Stable PLL, but insufficient compute throughput for real-time AAudio/AudioFlinger deadline budgets).
 
 ### Table Offsets in `CPU_DVFS.ko`
 * `MT6833_B24GTbl`: `0xd7f8` (768 bytes = 16 entries x 3 clusters)
@@ -516,9 +517,9 @@ u8 cpuhvfs_get_cci_result(int little_idx, int big_idx, int mode) {
 * **Performance Mode (`mode = 1`, 0x100–0x1ff)**: 16 rows x 16 columns, uncapped up to 1600 MHz OPP 0.
 
 ### 8.3 Matrix Decoupling in `scripts/patch_dvfs.py`
-In stock firmware matrices (`CCI_FYTbl`, `CCI_B20GTbl`, `CCI_B24GTbl`), rows 11..15 and columns 11..15 unconditionally mapped to OPP 15 (stock 450 MHz). When unlocking the physical 200 MHz floor on OPP 15:
-1. Clamping rows 11..14 and columns 11..14 to **OPP 14 (450 MHz @ 600.00 mV)** prevents interconnect bandwidth starvation when a single cluster is active (e.g., Little at 862 MHz / OPP 11).
-2. Clamping **OPP 15 (200 MHz @ 581.25 mV)** strictly to `(row == 15 && col == 15)` guarantees that the 200 MHz underclock floor engages exclusively when both CPU clusters occupy their 200 MHz idle floor, reducing interconnect dynamic power by **64.5%** with zero active latency penalty.
+In stock firmware matrices (`CCI_FYTbl`, `CCI_B20GTbl`, `CCI_B24GTbl`), rows 11..15 and columns 11..15 unconditionally mapped to OPP 15 (stock 450 MHz). When tuning the 450 MHz floor on OPP 15:
+1. Clamping rows 11..14 and columns 11..14 to **OPP 14 (487 MHz @ 612.50 mV)** prevents interconnect bandwidth starvation when a single cluster is active (e.g., Little at 862 MHz / OPP 11).
+2. Clamping **OPP 15 (450 MHz @ 600.00 mV)** strictly to `(row == 15 && col == 15)` guarantees that the 450 MHz floor engages exclusively when both CPU clusters occupy their 450 MHz idle floor, ensuring maximum energy efficiency with zero audio jitter or active latency penalty.
 
 ---
 

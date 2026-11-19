@@ -22,7 +22,7 @@ import struct
 import argparse
 
 LITTLE_PATCHED_VOLTS = [
-    58125, # OPP 0 (200 MHz underclock floor)
+    58125, # OPP 0 (450 MHz underclock floor)
     59375, # OPP 1 (500 MHz)
     62500, # OPP 2 (703 MHz)
     63750, # OPP 3 (756 MHz)
@@ -41,7 +41,7 @@ LITTLE_PATCHED_VOLTS = [
 ]
 
 BIG_PATCHED_VOLTS_B24G = [
-    58125, # OPP 0 (200 MHz underclock floor)
+    58125, # OPP 0 (450 MHz underclock floor)
     59375, # OPP 1 (500 MHz)
     65625, # OPP 2 (898 MHz)
     68125, # OPP 3 (985 MHz)
@@ -60,7 +60,7 @@ BIG_PATCHED_VOLTS_B24G = [
 ]
 
 BIG_PATCHED_VOLTS_B20G = [
-    58125, # OPP 0 (200 MHz underclock floor)
+    58125, # OPP 0 (450 MHz underclock floor)
     59375, # OPP 1 (500 MHz)
     65625, # OPP 2
     68125, # OPP 3
@@ -79,8 +79,8 @@ BIG_PATCHED_VOLTS_B20G = [
 ]
 
 CCI_PATCHED_VOLTS = [
-    58125, # OPP 0 (200 MHz underclock floor)
-    60000, # OPP 1 (450 MHz)
+    60000, # OPP 0 (450 MHz stock floor @ -50mV)
+    61250, # OPP 1 (487 MHz)
     62500, # OPP 2 (525 MHz)
     63750, # OPP 3 (562 MHz)
     65000, # OPP 4 (600 MHz)
@@ -207,23 +207,23 @@ def patch_upower(input_path, output_path):
     # 1. Patch static tables
     tables = [
         # (Table name, Volt list, is_cluster, is_floor_scaled, floor_ratio)
-        ("upower_tbl_l_FY", LITTLE_PATCHED_VOLTS, False, True, (200, 500)),
-        ("upower_tbl_l_B20G", LITTLE_PATCHED_VOLTS, False, True, (200, 500)),
-        ("upower_tbl_l_B24G", LITTLE_PATCHED_VOLTS, False, True, (200, 500)),
-        ("upower_tbl_cluster_l_FY", LITTLE_PATCHED_VOLTS, True, True, (200, 500)),
-        ("upower_tbl_cluster_l_B20G", LITTLE_PATCHED_VOLTS, True, True, (200, 500)),
-        ("upower_tbl_cluster_l_B24G", LITTLE_PATCHED_VOLTS, True, True, (200, 500)),
+        ("upower_tbl_l_FY", LITTLE_PATCHED_VOLTS, False, True, (450, 500)),
+        ("upower_tbl_l_B20G", LITTLE_PATCHED_VOLTS, False, True, (450, 500)),
+        ("upower_tbl_l_B24G", LITTLE_PATCHED_VOLTS, False, True, (450, 500)),
+        ("upower_tbl_cluster_l_FY", LITTLE_PATCHED_VOLTS, True, True, (450, 500)),
+        ("upower_tbl_cluster_l_B20G", LITTLE_PATCHED_VOLTS, True, True, (450, 500)),
+        ("upower_tbl_cluster_l_B24G", LITTLE_PATCHED_VOLTS, True, True, (450, 500)),
 
-        ("upower_tbl_b_FY", BIG_PATCHED_VOLTS_B24G, False, True, (200, 500)),
-        ("upower_tbl_b_B20G", BIG_PATCHED_VOLTS_B20G, False, True, (200, 500)),
-        ("upower_tbl_b_B24G", BIG_PATCHED_VOLTS_B24G, False, True, (200, 500)),
-        ("upower_tbl_cluster_b_FY", BIG_PATCHED_VOLTS_B24G, True, True, (200, 500)),
-        ("upower_tbl_cluster_b_B20G", BIG_PATCHED_VOLTS_B20G, True, True, (200, 500)),
-        ("upower_tbl_cluster_b_B24G", BIG_PATCHED_VOLTS_B24G, True, True, (200, 500)),
+        ("upower_tbl_b_FY", BIG_PATCHED_VOLTS_B24G, False, True, (450, 500)),
+        ("upower_tbl_b_B20G", BIG_PATCHED_VOLTS_B20G, False, True, (450, 500)),
+        ("upower_tbl_b_B24G", BIG_PATCHED_VOLTS_B24G, False, True, (450, 500)),
+        ("upower_tbl_cluster_b_FY", BIG_PATCHED_VOLTS_B24G, True, True, (450, 500)),
+        ("upower_tbl_cluster_b_B20G", BIG_PATCHED_VOLTS_B20G, True, True, (450, 500)),
+        ("upower_tbl_cluster_b_B24G", BIG_PATCHED_VOLTS_B24G, True, True, (450, 500)),
 
-        ("upower_tbl_cci_FY", CCI_PATCHED_VOLTS, False, True, (200, 450)),
-        ("upower_tbl_cci_B20G", CCI_PATCHED_VOLTS, False, True, (200, 450)),
-        ("upower_tbl_cci_B24G", CCI_PATCHED_VOLTS, False, True, (200, 450)),
+        ("upower_tbl_cci_FY", CCI_PATCHED_VOLTS, False, False, (450, 450)),
+        ("upower_tbl_cci_B20G", CCI_PATCHED_VOLTS, False, False, (450, 450)),
+        ("upower_tbl_cci_B24G", CCI_PATCHED_VOLTS, False, False, (450, 450)),
     ]
 
     for tbl_name, volts, is_cluster, is_floor, floor_rat in tables:

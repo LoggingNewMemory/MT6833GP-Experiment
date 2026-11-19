@@ -38,11 +38,11 @@ def pack_method_tbl(opps):
     return buf
 
 # Cluster 0: Little (LL)
-# Min: 200 MHz, Max: 2000 MHz (Stock max)
+# Min: 450 MHz (Underclock floor), Max: 2000 MHz (Stock max)
 # OPP 0..10: -50.00 mV (step - 8)
 # OPP 11..13: -37.50 mV (step - 6)
 # OPP 14: 500 MHz, step 31 (593.75 mV), a=4, b=1
-# OPP 15: 200 MHz, step 29 (581.25 mV), a=4, b=2 (VCO = 200 * 4 * 2 = 1600 MHz)
+# OPP 15: 450 MHz, step 29 (581.25 mV), a=4, b=1 (VCO = 450 * 4 = 1800 MHz)
 little_opps = [
     (2000, 88, 1, 1), # OPP 0:  1000.00 -> 950.00 mV (-50.00 mV)
     (1916, 84, 1, 1), # OPP 1:   975.00 -> 925.00 mV (-50.00 mV)
@@ -59,15 +59,15 @@ little_opps = [
     ( 756, 38, 4, 1), # OPP 12:  675.00 -> 637.50 mV (-37.50 mV)
     ( 703, 36, 4, 1), # OPP 13:  662.50 -> 625.00 mV (-37.50 mV)
     ( 500, 31, 4, 1), # OPP 14:  650.00 -> 593.75 mV (500 MHz, a=4, b=1)
-    ( 200, 29, 4, 2), # OPP 15:  650.00 -> 581.25 mV (200 MHz, a=4, b=2, VCO=1600 MHz)
+    ( 450, 29, 4, 1), # OPP 15:  650.00 -> 581.25 mV (450 MHz, a=4, b=1, VCO=1800 MHz)
 ]
 
 # Cluster 1: Big (L)
-# Min: 200 MHz, Max: 2400 MHz (Stock max)
+# Min: 450 MHz (Underclock floor), Max: 2400 MHz (Stock max)
 # OPP 0..11: -50.00 mV (step - 8)
 # OPP 12..13: -37.50 mV (step - 6)
 # OPP 14: 500 MHz, step 31 (593.75 mV), a=4, b=1 (VCO = 500 * 4 = 2000 MHz)
-# OPP 15: 200 MHz, step 29 (581.25 mV), a=4, b=2 (VCO = 200 * 4 * 2 = 1600 MHz)
+# OPP 15: 450 MHz, step 29 (581.25 mV), a=4, b=1 (VCO = 450 * 4 = 1800 MHz)
 big_opps = [
     (2400,  96, 1, 1), # OPP 0: 1050.00 -> 1000.00 mV (-50.00 mV)
     (2306,  93, 1, 1), # OPP 1: 1031.25 ->  981.25 mV (-50.00 mV)
@@ -84,14 +84,14 @@ big_opps = [
     ( 985,  45, 2, 1), # OPP 12: 718.75 ->  681.25 mV (-37.50 mV)
     ( 898,  41, 2, 1), # OPP 13: 693.75 ->  656.25 mV (-37.50 mV)
     ( 500,  31, 4, 1), # OPP 14: 681.25 ->  593.75 mV (500 MHz, a=4, b=1, VCO=2000 MHz)
-    ( 200,  29, 4, 2), # OPP 15: 650.00 ->  581.25 mV (200 MHz, a=4, b=2, VCO=1600 MHz)
+    ( 450,  29, 4, 1), # OPP 15: 650.00 ->  581.25 mV (450 MHz, a=4, b=1, VCO=1800 MHz)
 ]
 
 # Cluster 2: CCI (Cache Coherent Interconnect)
-# Min: 200 MHz (Underclock floor), Max: 1600 MHz (Stock max)
+# Min: 450 MHz (Stock floor with -50mV undervolt), Max: 1600 MHz (Stock max)
 # OPP 0..13: -50.00 mV (step - 8)
-# OPP 14: 450 MHz, step 32 (600.00 mV), a=4, b=1 (VCO = 1800 MHz)
-# OPP 15: 200 MHz, step 29 (581.25 mV), a=4, b=2 (VCO = 200 * 4 * 2 = 1600 MHz)
+# OPP 14: 487 MHz, step 34 (612.50 mV), a=4, b=1 (VCO = 1948 MHz)
+# OPP 15: 450 MHz, step 32 (600.00 mV), a=4, b=1 (VCO = 1800 MHz)
 cci_opps = [
     (1600, 88, 1, 1), # OPP 0:  1000.00 -> 950.00 mV (-50.00 mV)
     (1531, 85, 2, 1), # OPP 1:   981.25 -> 931.25 mV (-50.00 mV)
@@ -107,8 +107,8 @@ cci_opps = [
     ( 600, 40, 4, 1), # OPP 11:  700.00 -> 650.00 mV (-50.00 mV)
     ( 562, 38, 4, 1), # OPP 12:  687.50 -> 637.50 mV (-50.00 mV)
     ( 525, 36, 4, 1), # OPP 13:  675.00 -> 625.00 mV (-50.00 mV)
-    ( 450, 32, 4, 1), # OPP 14:  650.00 -> 600.00 mV (450 MHz, a=4, b=1, VCO=1800 MHz)
-    ( 200, 29, 4, 2), # OPP 15:  650.00 -> 581.25 mV (200 MHz, a=4, b=2, VCO=1600 MHz)
+    ( 487, 34, 4, 1), # OPP 14:  662.50 -> 612.50 mV (487 MHz, a=4, b=1, VCO=1948 MHz)
+    ( 450, 32, 4, 1), # OPP 15:  650.00 -> 600.00 mV (450 MHz, a=4, b=1, VCO=1800 MHz)
 ]
 
 def patch_cci_map(data, offset):
@@ -188,7 +188,7 @@ def patch_file(input_path, output_path):
     patch_cci_map(data, 0xcbf8) # CCI_FYTbl
     patch_cci_map(data, 0xcdf8) # CCI_B20GTbl
     patch_cci_map(data, 0xcff8) # CCI_B24GTbl
-    print(" [+] Patched CCI_FYTbl, CCI_B20GTbl, and CCI_B24GTbl (idle-only 200 MHz engagement)")
+    print(" [+] Patched CCI_FYTbl, CCI_B20GTbl, and CCI_B24GTbl (idle-only 450 MHz engagement)")
 
     # 6. Patch mediatek_eem overwrite bypass
     eem_bypass_stub = bytes([

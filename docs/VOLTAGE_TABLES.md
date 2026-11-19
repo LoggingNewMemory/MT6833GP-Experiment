@@ -23,7 +23,7 @@ $$
 
 ### Little Cluster (6x Cortex-A55)
 * Stock Range: 500 MHz (550.00 mV eFuse / 650.00 mV nominal) – 2000 MHz (812.50 mV eFuse / 1000.00 mV nominal)
-* Patched Range: **200 MHz (581.25 mV) – 2000 MHz (950.00 mV)**
+* Patched Range: **450 MHz (581.25 mV) – 2000 MHz (950.00 mV)**
 
 | OPP Index | Frequency | Stock Nominal | Stock eFuse | Patched Nominal | Delta vs Stock | PLL Config (a, b) | VCO Freq |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -42,13 +42,13 @@ $$
 | 12 |  756 MHz |  675.00 mV | 568.75 mV | **637.50 mV** | -37.50 mV | (4, 1) | 3024 MHz |
 | 13 |  703 MHz |  662.50 mV | 562.50 mV | **625.00 mV** | -37.50 mV | (4, 1) | 2812 MHz |
 | 14 |  500 MHz |  650.00 mV | 550.00 mV | **593.75 mV** | -56.25 mV | (4, 1) | 2000 MHz |
-| 15 | **200 MHz** | *(unlocked)* | *(unlocked)* | **581.25 mV** | **Underclock** | (4, 2) | 1600 MHz |
+| 15 | **450 MHz** | *(unlocked)* | *(unlocked)* | **581.25 mV** | **Underclock** | (4, 1) | 1800 MHz |
 
 ---
 
 ### Big Cluster (2x Cortex-A76)
 * Stock Range: 725 MHz (550.00 mV eFuse / 650.00 mV nominal) – 2400 MHz (781.25 mV eFuse / 1050.00 mV nominal)
-* Patched Range: **200 MHz (581.25 mV) – 2400 MHz (1000.00 mV)**
+* Patched Range: **450 MHz (581.25 mV) – 2400 MHz (1000.00 mV)**
 
 | OPP Index | Frequency | Stock Nominal | Stock eFuse | Patched Nominal | Delta vs Stock | PLL Config (a, b) | VCO Freq |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -67,7 +67,7 @@ $$
 | 12 |  985 MHz |  718.75 mV | 575.00 mV | **681.25 mV** | -37.50 mV | (2, 1) | 1970 MHz |
 | 13 |  898 MHz |  693.75 mV | 568.75 mV | **656.25 mV** | -37.50 mV | (2, 1) | 1796 MHz |
 | 14 |  500 MHz |  681.25 mV | 562.50 mV | **593.75 mV** | -87.50 mV | (4, 1) | 2000 MHz |
-| 15 | **200 MHz** | *(unlocked)* | 550.00 mV | **581.25 mV** | **Underclock** | (4, 2) | 1600 MHz |
+| 15 | **450 MHz** | *(unlocked)* | 550.00 mV | **581.25 mV** | **Underclock** | (4, 1) | 1800 MHz |
 
 ---
 
@@ -164,13 +164,13 @@ Physical Base: `0x10006710` (SPM controller). When DVFSRC memory bandwidth reach
 ## 5. Calibrated Upower EAS Energy Model Tables (`Upower.ko`)
 
 ### 5.1 Little Cluster Energy Table (`upower_tbl_l_B24G`)
-* Capacity Range: 147 (200 MHz underclock floor) – 356 (2000 MHz maximum)
+* Capacity Range: 163 (450 MHz underclock floor) – 356 (2000 MHz maximum)
 * Efficiency Evaluation: Lower values indicate superior power efficiency.
-* `turn_point` calibrated to **2 (500 MHz)** on live hardware (matching `/proc/upower/upower_debug`), shifted by the 200 MHz Big core underclock floor.
+* `turn_point` calibrated to **2 (500 MHz)** on live hardware (matching `/proc/upower/upower_debug`), shifted by the 450 MHz Big core underclock floor.
 
 | Upower OPP | CPU_DVFS OPP | Frequency | Stock Volt | Patched Volt | Stock Dyn Power | Patched Dyn Power | Power Delta | Efficiency (eff) |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| 0 | 15 | **200 MHz** | 650.00 mV | **581.25 mV** | 17,036 uW | **7,083 uW** | **-58.4%** | 214 (static) / 340 (live) |
+| 0 | 15 | **450 MHz** | 650.00 mV | **581.25 mV** | 17,036 uW | **14,694 uW** | **-13.7%** | 235 (static) / 350 (live) |
 | 1 | 14 | 500 MHz | 650.00 mV | **593.75 mV** | 22,147 uW | **18,479 uW** | **-16.6%** | **237 (turn_pt, static)** / **339 (turn_pt, live)** |
 | 2 | 13 | 703 MHz | 662.50 mV | **625.00 mV** | 24,883 uW | **22,145 uW** | **-11.0%** | 245 (static) / 353 (live) |
 | 3 | 12 | 756 MHz | 675.00 mV | **637.50 mV** | 27,778 uW | **24,777 uW** | **-10.8%** | 250 (static) / 358 (live) |
@@ -190,11 +190,11 @@ Physical Base: `0x10006710` (SPM controller). When DVFSRC memory bandwidth reach
 ---
 
 ### 5.2 Big Cluster Energy Table (`upower_tbl_b_B24G`)
-* Capacity Range: 611 (200 MHz underclock floor) – 1024 (2400 MHz maximum)
+* Capacity Range: 611 (450 MHz underclock floor) – 1024 (2400 MHz maximum)
 
 | Upower OPP | CPU_DVFS OPP | Frequency | Stock Volt | Patched Volt | Stock Dyn Power | Patched Dyn Power | Power Delta | Efficiency (eff) |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| 0 | 15 | **200 MHz** | 650.00 mV | **581.25 mV** | 88,853 uW | **32,928 uW** | **-62.9%** | **224 (min_eff, static)** / **340 (min_eff, live)** |
+| 0 | 15 | **450 MHz** | 650.00 mV | **581.25 mV** | 88,853 uW | **76,552 uW** | **-13.8%** | **267 (min_eff, static)** / **391 (min_eff, live)** |
 | 1 | 14 | 500 MHz | 681.25 mV | **593.75 mV** | 113,084 uW | **85,900 uW** | **-24.0%** | 297 (static) / 391 (live) |
 | 2 | 13 | 898 MHz | 693.75 mV | **656.25 mV** | 125,369 uW | **112,181 uW** | **-10.5%** | 326 (static) / 447 (live) |
 | 3 | 12 | 985 MHz | 718.75 mV | **681.25 mV** | 147,605 uW | **132,604 uW** | **-10.2%** | 349 (static) / 472 (live) |
@@ -214,14 +214,14 @@ Physical Base: `0x10006710` (SPM controller). When DVFSRC memory bandwidth reach
 ---
 
 ### 5.3 CCI Interconnect Energy Table (`upower_tbl_cci_B24G`)
-* Frequency Range: 200 MHz (Underclock Floor) – 1600 MHz (Maximum Burst)
-* Interconnect Voltage Delta: Full -50.00 mV undervolt across OPP 0..14; OPP 15 underclock floor at 581.25 mV (Step 29)
-* Mapping Arbitration: Decoupled 16x16 matrix (`CCI_B24GTbl`) activates 200 MHz OPP 15 strictly when both Little (Cluster 0) and Big (Cluster 1) occupy idle floor OPP 15.
+* Frequency Range: 450 MHz (Floor) – 1600 MHz (Maximum Burst)
+* Interconnect Voltage Delta: Full -50.00 mV undervolt across all 16 OPPs (OPP 15 at 600.00 mV, OPP 14 at 612.50 mV)
+* Mapping Arbitration: Decoupled 16x16 matrix (`CCI_B24GTbl`) activates 450 MHz OPP 15 strictly when both Little (Cluster 0) and Big (Cluster 1) occupy idle floor OPP 15.
 
 | Upower OPP | CPU_DVFS OPP | Frequency | Stock Volt | Patched Volt | Stock Dyn Power | Patched Dyn Power | Power Delta |
 | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| 0 | 15 | **200 MHz** | 650.00 mV | **581.25 mV** | 8,189 uW | **3,149 uW** | **-61.5%** |
-| 1 | 14 | 450 MHz | 650.00 mV | **600.00 mV** | 8,189 uW | **7,551 uW** | **-7.8%** |
+| 0 | 15 | **450 MHz** | 650.00 mV | **600.00 mV** | 8,189 uW | **6,979 uW** | **-14.8%** |
+| 1 | 14 | 487 MHz | 650.00 mV | **612.50 mV** | 8,189 uW | **7,273 uW** | **-11.2%** |
 | 2 | 13 | 525 MHz | 675.00 mV | **625.00 mV** | 10,303 uW | **8,833 uW** | **-14.3%** |
 | 3 | 12 | 562 MHz | 687.50 mV | **637.50 mV** | 11,442 uW | **9,838 uW** | **-14.0%** |
 | 4 | 11 | 600 MHz | 700.00 mV | **650.00 mV** | 12,663 uW | **10,918 uW** | **-13.8%** |
@@ -246,9 +246,9 @@ MediaTek Power Policy Manager (PPM) dynamically evaluates thermal and battery cu
 
 | State | Configuration `(N_L, OPP_L, N_B, OPP_B)` | Little Frequency | Big Frequency | Total Power Budget | Delta vs Stock |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Absolute Floor** | `(6, 15, 2, 15)` | 200 MHz | 200 MHz | **293 mW** | -58.8% |
-| **Little Idle Floor** | `(6, 15, 0, 0)` | 200 MHz | Offline (0 cores) | **42 mW** | -58.4% |
-| **Big Idle Floor** | `(0, 0, 2, 15)` | Offline (0 cores) | 200 MHz | **66 mW** | -62.9% |
+| **Absolute Floor** | `(6, 15, 2, 15)` | 450 MHz | 450 MHz | **340 mW** | -52.2% |
+| **Little Idle Floor** | `(6, 15, 0, 0)` | 450 MHz | Offline (0 cores) | **88 mW** | -13.7% |
+| **Big Idle Floor** | `(0, 0, 2, 15)` | Offline (0 cores) | 450 MHz | **153 mW** | -13.8% |
 | **Sustained Thermal Ceiling** | `(6, 5, 2, 8)` | 1500 MHz | 1418 MHz | **1230 mW** | -12.4% |
 | **Peak Full Load** | `(6, 0, 2, 0)` | 2000 MHz | 2400 MHz | **2479 mW** | -11.5% |
 
@@ -257,20 +257,20 @@ Writing a power ceiling (in milliwatts) to `/proc/ppm/cobra_budget_to_limit` yie
 
 | Target Power Budget | Allocated Configuration `(N_L, OPP_L, N_B, OPP_B)` | Little Frequency Limit | Big Frequency Limit | Effective Power | Primary Use Case |
 | :---: | :---: | :---: | :---: | :---: | :--- |
-| **300 mW** | `(6, 15, 2, 15)` | 200 MHz (OPP 15) | 200 MHz (OPP 15) | 293 mW | Screen-Off Standby & Audio Playback |
-| **500 mW** | `(6, 13, 2, 15)` | 703 MHz (OPP 13) | 200 MHz (OPP 15) | 496 mW | Background Sync & Light UI Reading |
-| **750 mW** | `(6, 8, 2, 15)` | 1128 MHz (OPP 8) | 200 MHz (OPP 15) | 732 mW | 60 FPS 2D Social Media Browsing |
-| **1000 mW** | `(6, 2, 2, 15)` | 1812 MHz (OPP 2) | 200 MHz (OPP 15) | 955 mW | Balanced Sustained Mobile Web |
+| **350 mW** | `(6, 15, 2, 15)` | 450 MHz (OPP 15) | 450 MHz (OPP 15) | 340 mW | Screen-Off Standby & Audio Playback |
+| **500 mW** | `(6, 13, 2, 15)` | 703 MHz (OPP 13) | 450 MHz (OPP 15) | 496 mW | Background Sync & Light UI Reading |
+| **750 mW** | `(6, 8, 2, 15)` | 1128 MHz (OPP 8) | 450 MHz (OPP 15) | 732 mW | 60 FPS 2D Social Media Browsing |
+| **1000 mW** | `(6, 2, 2, 15)` | 1812 MHz (OPP 2) | 450 MHz (OPP 15) | 955 mW | Balanced Sustained Mobile Web |
 | **1250 mW** | `(6, 5, 2, 8)` | 1500 MHz (OPP 5) | 1418 MHz (OPP 8) | 1230 mW | Sustained Gaming & Video Recording |
 | **1500 mW** | `(6, 0, 2, 8)` | 2000 MHz (OPP 0) | 1418 MHz (OPP 8) | 1485 mW | Heavy Computational Multitasking |
 | **2000 mW** | `(6, 0, 2, 3)` | 2000 MHz (OPP 0) | 2118 MHz (OPP 3) | 1980 mW | High-Framerate 3D Gaming (90 FPS) |
 | **2479 mW** | `(6, 0, 2, 0)` | 2000 MHz (OPP 0) | 2400 MHz (OPP 0) | 2479 mW | Unconstrained Peak Synthetic Burst |
 
 ### 6.3 Standby & Screen-Off Policy (`PPM_POLICY_LCM_OFF`)
-When the display panel blanks (`FB_BLANK_POWERDOWN`), `PPM_POLICY_LCM_OFF` clamps the Little cluster frequency to `lcmoff_min_freq = 200000` (200 MHz). With Big cores powered off by CPU hotplug and Little cores locked to 200 MHz @ 581.25 mV:
-* Total CPU package dynamic power: 6 x 7.083 mW = 42.5 mW.
-* Interconnect CCI dynamic power: 7.42 mW.
-* Total baseline standby draw: < 60 mW (down from stock 150+ mW).
+When the display panel blanks (`FB_BLANK_POWERDOWN`), `PPM_POLICY_LCM_OFF` clamps the Little cluster frequency to `lcmoff_min_freq = 450000` (450 MHz). With Big cores powered off by CPU hotplug and Little cores locked to 450 MHz @ 581.25 mV:
+* Total CPU package dynamic power: 6 x 14.694 mW = 88.2 mW.
+* Interconnect CCI dynamic power: 6.98 mW.
+* Total baseline standby draw: < 100 mW (down from stock 150+ mW, with full audio headroom).
 
 ---
 
@@ -295,7 +295,7 @@ The following parameters configure Energy Aware Scheduling (EAS) capacity clampi
 | :--- | :---: | :---: | :--- | :--- |
 | `/dev/cpuctl/system/uclamp.min` | `1024` (or `max`) | **`20.00`** | Android `system` cgroup (framework services, background daemons) | De-clamps background system services from demanding 100% capacity; saves 100–250 mW during background operation. |
 | `/dev/cpuctl/system/cpu.uclamp.min` | `1024` (or `max`) | **`20.00`** | Android cgroup v2 alternative path for system tasks | Ensures compatibility across kernel cgroup configurations. |
-| `kernel.sched_util_clamp_min` | `128` (or vendor floor) | **`0`** | Global kernel utilization clamp floor | Allows EAS schedutil to drop CPU cores down to 200 MHz floor when runqueues are idle. |
+| `kernel.sched_util_clamp_min` | `128` (or vendor floor) | **`0`** | Global kernel utilization clamp floor | Allows EAS schedutil to drop CPU cores down to 450 MHz floor when runqueues are idle. |
 
 ---
 
